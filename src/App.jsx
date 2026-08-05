@@ -96,17 +96,21 @@ function NameGate({ onSet, busy }) {
   );
 }
 
-function CheckInForm({ onCreate, onCancel, initialVenueQuery }) {
+function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue }) {
   const [venueQuery, setVenueQuery] = useState(initialVenueQuery || "");
   const [venueResults, setVenueResults] = useState([]);
-  const [selectedVenue, setSelectedVenue] = useState(null);
+  const [selectedVenue, setSelectedVenue] = useState(
+    presetVenue
+      ? { id: presetVenue.id, name: presetVenue.name, lat: presetVenue.lat, lng: presetVenue.lng, website: presetVenue.osm_website }
+      : null
+  );
   const [vibe, setVibe] = useState("chill");
   const [note, setNote] = useState("");
   const [hours, setHours] = useState(3);
   const justSelectedRef = React.useRef(false);
 
   useEffect(() => {
-    if (justSelectedRef.current) {
+    if (presetVenue || justSelectedRef.current) {
       justSelectedRef.current = false;
       return;
     }
@@ -127,7 +131,7 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery }) {
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [venueQuery]);
+  }, [venueQuery, presetVenue]);
 
   const selectVenue = (r) => {
     justSelectedRef.current = true;
@@ -150,26 +154,46 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery }) {
       <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 20, color: colors.text, marginBottom: 16 }}>check in</div>
 
       <label style={label}>venue</label>
-      <div style={{ position: "relative", marginBottom: 6 }}>
-        <input
-          style={inputStyle}
-          value={venueQuery}
-          onChange={(e) => { setVenueQuery(e.target.value); setSelectedVenue(null); }}
-          placeholder="start typing a real venue..."
-        />
-        {venueResults.length > 0 && (
-          <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10, background: colors.surfaceRaised, border: `1px solid ${colors.line}`, borderRadius: 9, marginTop: 4, overflow: "hidden" }}>
-            {venueResults.map((r) => (
-              <div key={r.place_id} onClick={() => selectVenue(r)} style={{ padding: "9px 12px", fontSize: 12.5, color: colors.text, cursor: "pointer", borderBottom: `1px solid ${colors.line}` }}>
-                {r.display_name}
+      {presetVenue ? (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "12px 14px",
+            borderRadius: 10,
+            background: "#14282e",
+            border: "1px solid #34E4EA66",
+            marginBottom: 14,
+          }}
+        >
+          <span style={{ fontFamily: bodyFont, fontSize: 13.5, color: colors.text, fontWeight: 600 }}>📍 {presetVenue.name}</span>
+          <span style={{ fontFamily: monoFont, fontSize: 10, color: "#34E4EA" }}>✓ already spotted</span>
+        </div>
+      ) : (
+        <>
+          <div style={{ position: "relative", marginBottom: 6 }}>
+            <input
+              style={inputStyle}
+              value={venueQuery}
+              onChange={(e) => { setVenueQuery(e.target.value); setSelectedVenue(null); }}
+              placeholder="start typing a real venue..."
+            />
+            {venueResults.length > 0 && (
+              <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10, background: colors.surfaceRaised, border: `1px solid ${colors.line}`, borderRadius: 9, marginTop: 4, overflow: "hidden" }}>
+                {venueResults.map((r) => (
+                  <div key={r.place_id} onClick={() => selectVenue(r)} style={{ padding: "9px 12px", fontSize: 12.5, color: colors.text, cursor: "pointer", borderBottom: `1px solid ${colors.line}` }}>
+                    {r.display_name}
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
-        )}
-      </div>
-      <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: selectedVenue ? "#34E4EA" : colors.textMuted, marginBottom: 14 }}>
-        {selectedVenue ? "✓ verified venue" : "pick a real place from the list"}
-      </div>
+          <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: selectedVenue ? "#34E4EA" : colors.textMuted, marginBottom: 14 }}>
+            {selectedVenue ? "✓ verified venue" : "pick a real place from the list"}
+          </div>
+        </>
+      )}
 
       <label style={label}>vibe right now</label>
       <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
@@ -206,7 +230,7 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery }) {
   );
 }
 
-function VenueCard({ group, myName, onCheckOut, defaultExpanded }) {
+function VenueCard({ group, myName, onCheckOut, onCheckInHere, defaultExpanded }) {
   const [expanded, setExpanded] = useState(!!defaultExpanded);
   const vibeCounts = {};
   group.checkins.forEach((c) => { vibeCounts[c.vibe] = (vibeCounts[c.vibe] || 0) + 1; });
@@ -266,10 +290,16 @@ function VenueCard({ group, myName, onCheckOut, defaultExpanded }) {
               🌐 venue website
             </a>
           )}
-          {mine && (
+          {mine ? (
             <div style={{ marginTop: 10 }}>
               <Button variant="danger" onClick={() => onCheckOut(mine.id)} style={{ padding: "7px 12px", fontSize: 11.5 }}>
                 check out
+              </Button>
+            </div>
+          ) : (
+            <div style={{ marginTop: 10 }}>
+              <Button onClick={() => onCheckInHere(group.venue)} style={{ padding: "8px 14px", fontSize: 12 }}>
+                📍 check in here too
               </Button>
             </div>
           )}
@@ -407,7 +437,7 @@ function BadgesScreen({ stats, myId }) {
   );
 }
 
-function FeedScreen({ groups, myName, onCheckOut, onStartCheckinAt }) {
+function FeedScreen({ groups, myName, onCheckOut, onCheckInHere, onStartCheckinAt }) {
   const [query, setQuery] = useState("");
   const [osmResults, setOsmResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -487,7 +517,7 @@ function FeedScreen({ groups, myName, onCheckOut, onStartCheckinAt }) {
             {spotlightGroup.venue.name}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <Button onClick={() => onStartCheckinAt(spotlightGroup.venue.name)} style={{ flex: 1, padding: "9px 0", fontSize: 12 }}>
+            <Button onClick={() => onCheckInHere(spotlightGroup.venue)} style={{ flex: 1, padding: "9px 0", fontSize: 12 }}>
               check in here
             </Button>
             <Button variant="ghost" onClick={() => setSpotlightId(null)} style={{ padding: "9px 12px", fontSize: 12 }}>
@@ -594,7 +624,7 @@ function FeedScreen({ groups, myName, onCheckOut, onStartCheckinAt }) {
 
       <div style={{ paddingBottom: 20 }}>
         {filtered.map((g) => (
-          <VenueCard key={g.venue.id} group={g} myName={myName} onCheckOut={onCheckOut} />
+          <VenueCard key={g.venue.id} group={g} myName={myName} onCheckOut={onCheckOut} onCheckInHere={onCheckInHere} />
         ))}
       </div>
     </div>
@@ -612,6 +642,7 @@ export default function App() {
   const [view, setView] = useState("feed");
   const [stats, setStats] = useState({ checkinCount: 0, venueCount: 0, friendCount: 0 });
   const [prefillVenue, setPrefillVenue] = useState("");
+  const [presetVenue, setPresetVenue] = useState(null);
 
   useEffect(() => {
     const init = async () => {
@@ -703,22 +734,24 @@ export default function App() {
 
   const checkIn = async (data) => {
     try {
-      let venueId;
-      const { data: existingVenue } = await supabase
-        .from("venues")
-        .select("*")
-        .ilike("name", data.venue.name)
-        .maybeSingle();
-      if (existingVenue) {
-        venueId = existingVenue.id;
-      } else {
-        const { data: newVenue, error: venueErr } = await supabase
+      let venueId = data.venue.id || null;
+      if (!venueId) {
+        const { data: existingVenue } = await supabase
           .from("venues")
-          .insert({ name: data.venue.name, lat: data.venue.lat, lng: data.venue.lng, osm_website: data.venue.website })
-          .select()
-          .single();
-        if (venueErr) throw venueErr;
-        venueId = newVenue.id;
+          .select("*")
+          .ilike("name", data.venue.name)
+          .maybeSingle();
+        if (existingVenue) {
+          venueId = existingVenue.id;
+        } else {
+          const { data: newVenue, error: venueErr } = await supabase
+            .from("venues")
+            .insert({ name: data.venue.name, lat: data.venue.lat, lng: data.venue.lng, osm_website: data.venue.website })
+            .select()
+            .single();
+          if (venueErr) throw venueErr;
+          venueId = newVenue.id;
+        }
       }
       const expiresAt = new Date(Date.now() + data.hours * 60 * 60 * 1000).toISOString();
       const { error: checkinErr } = await supabase.from("checkins").insert({
@@ -733,6 +766,7 @@ export default function App() {
       if (checkinErr) throw checkinErr;
       setView("feed");
       setPrefillVenue("");
+      setPresetVenue(null);
       loadData();
       loadStats();
     } catch (e) {
@@ -784,8 +818,9 @@ export default function App() {
               {view === "checkin" ? (
                 <CheckInForm
                   onCreate={checkIn}
-                  onCancel={() => { setPrefillVenue(""); setView("feed"); }}
+                  onCancel={() => { setPrefillVenue(""); setPresetVenue(null); setView("feed"); }}
                   initialVenueQuery={prefillVenue}
+                  presetVenue={presetVenue}
                 />
               ) : view === "you" ? (
                 <BadgesScreen stats={stats} myId={session.user.id} />
@@ -794,14 +829,15 @@ export default function App() {
                   groups={groups}
                   myName={profile.name}
                   onCheckOut={checkOut}
-                  onStartCheckinAt={(name) => { setPrefillVenue(name); setView("checkin"); }}
+                  onStartCheckinAt={(name) => { setPrefillVenue(name); setPresetVenue(null); setView("checkin"); }}
+                  onCheckInHere={(venue) => { setPresetVenue(venue); setPrefillVenue(""); setView("checkin"); }}
                 />
               )}
             </div>
 
             <BottomNav
               view={view}
-              onNavigate={(id) => { if (id === "checkin") setPrefillVenue(""); setView(id); }}
+              onNavigate={(id) => { if (id === "checkin") { setPrefillVenue(""); setPresetVenue(null); } setView(id); }}
             />
           </>
         )}
