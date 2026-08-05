@@ -272,7 +272,7 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
   );
 }
 
-function VenueCard({ group, myName, onCheckOut, onCheckInHere, defaultExpanded, isFavorite, onToggleFavorite, friendIds, crews, onCallCrew }) {
+function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, defaultExpanded, isFavorite, onToggleFavorite, friendIds, crews, onCallCrew }) {
   const [pickingCrew, setPickingCrew] = useState(false);
   const [called, setCalled] = useState(false);
   const [expanded, setExpanded] = useState(!!defaultExpanded);
@@ -282,7 +282,7 @@ function VenueCard({ group, myName, onCheckOut, onCheckInHere, defaultExpanded, 
   const v = topVibeEntry
     ? VIBES[topVibeEntry[0]]
     : { label: "Quiet for now", color: "#6B5F82", emoji: "🌑", gradient: "linear-gradient(135deg, #1A1226, #1A1226)" };
-  const mine = group.checkins.find((c) => c.user_name === myName);
+  const mine = group.checkins.find((c) => c.user_id === myId);
   const isPumping = group.checkins.length >= 5;
 
   return (
@@ -948,7 +948,7 @@ function DanceEventsPanel() {
   );
 }
 
-function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, crews, onCallCrew, crewCalls, myName, onCheckOut, onCheckInHere, onStartCheckinAt }) {
+function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, crews, onCallCrew, crewCalls, myName, myId, onCheckOut, onCheckInHere, onStartCheckinAt }) {
   const [query, setQuery] = useState("");
   const [osmResults, setOsmResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -1098,6 +1098,7 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
               key={g.venue.id}
               group={g}
               myName={myName}
+              myId={myId}
               onCheckOut={onCheckOut}
               onCheckInHere={onCheckInHere}
               isFavorite={true}
@@ -1239,6 +1240,7 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
             key={g.venue.id}
             group={g}
             myName={myName}
+            myId={myId}
             onCheckOut={onCheckOut}
             onCheckInHere={onCheckInHere}
             isFavorite={false}
@@ -1656,6 +1658,7 @@ export default function App() {
                   onCallCrew={callTheCrew}
                   crewCalls={crewCalls}
                   myName={profile.name}
+                  myId={session.user.id}
                   onCheckOut={checkOut}
                   onStartCheckinAt={(name) => { setPrefillVenue(name); setPresetVenue(null); setView("checkin"); }}
                   onCheckInHere={(venue) => { setPresetVenue(venue); setPrefillVenue(""); setView("checkin"); }}
