@@ -272,7 +272,9 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
   );
 }
 
-function VenueCard({ group, myName, onCheckOut, onCheckInHere, defaultExpanded, isFavorite, onToggleFavorite, friendIds }) {
+function VenueCard({ group, myName, onCheckOut, onCheckInHere, defaultExpanded, isFavorite, onToggleFavorite, friendIds, crews, onCallCrew }) {
+  const [pickingCrew, setPickingCrew] = useState(false);
+  const [called, setCalled] = useState(false);
   const [expanded, setExpanded] = useState(!!defaultExpanded);
   const vibeCounts = {};
   group.checkins.forEach((c) => { vibeCounts[c.vibe] = (vibeCounts[c.vibe] || 0) + 1; });
@@ -388,6 +390,44 @@ function VenueCard({ group, myName, onCheckOut, onCheckInHere, defaultExpanded, 
               <Button onClick={() => onCheckInHere(group.venue)} style={{ padding: "8px 14px", fontSize: 12 }}>
                 📍 check in here too
               </Button>
+            </div>
+          )}
+
+          {crews && crews.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              {called ? (
+                <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: "#FF3D9A", fontWeight: 700 }}>
+                  📣 crew called!
+                </div>
+              ) : pickingCrew ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted, marginBottom: 2 }}>
+                    call which crew?
+                  </div>
+                  {crews.map((c) => (
+                    <Button
+                      key={c.id}
+                      variant="ghost"
+                      onClick={() => { onCallCrew(c.id, group.venue); setCalled(true); setPickingCrew(false); }}
+                      style={{ padding: "7px 10px", fontSize: 11.5, textAlign: "left" }}
+                    >
+                      {c.name}
+                    </Button>
+                  ))}
+                </div>
+              ) : (
+                <Button
+                  variant="ghost"
+                  onClick={() =>
+                    crews.length === 1
+                      ? (onCallCrew(crews[0].id, group.venue), setCalled(true))
+                      : setPickingCrew(true)
+                  }
+                  style={{ padding: "7px 12px", fontSize: 11.5 }}
+                >
+                  📣 call the crew here
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -862,7 +902,7 @@ function DanceEventsPanel() {
   );
 }
 
-function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, myName, onCheckOut, onCheckInHere, onStartCheckinAt }) {
+function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, crews, onCallCrew, crewCalls, myName, onCheckOut, onCheckInHere, onStartCheckinAt }) {
   const [query, setQuery] = useState("");
   const [osmResults, setOsmResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -930,6 +970,39 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
 
   return (
     <div>
+      {crewCalls && crewCalls.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          {crewCalls.map((call) => {
+            const crewName = (crews.find((c) => c.id === call.crew_id) || {}).name || "your crew";
+            return (
+              <div
+                key={call.id}
+                style={{
+                  background: "linear-gradient(135deg, #2e1424, #14282e)",
+                  border: "1px solid #FF3D9A88",
+                  borderRadius: 14,
+                  padding: 13,
+                  marginBottom: 8,
+                }}
+              >
+                <div style={{ fontFamily: bodyFont, fontSize: 13, color: colors.text, marginBottom: 8, lineHeight: 1.4 }}>
+                  📣 <strong>{call.from_user_name}</strong> is calling on <strong>{crewName}</strong> to go to{" "}
+                  <strong>{call.venue_name}</strong>
+                </div>
+                <Button
+                  onClick={() =>
+                    onCheckInHere({ id: call.venue_id, name: call.venue_name, lat: null, lng: null, osm_website: null })
+                  }
+                  style={{ padding: "8px 14px", fontSize: 12 }}
+                >
+                  check in here too
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <DanceEventsPanel />
 
       {groups.length > 0 && (
@@ -984,6 +1057,8 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
               isFavorite={true}
               onToggleFavorite={onToggleFavorite}
               friendIds={friendIds}
+              crews={crews}
+              onCallCrew={onCallCrew}
             />
           ))}
         </div>
@@ -1123,6 +1198,8 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
             isFavorite={false}
             onToggleFavorite={onToggleFavorite}
             friendIds={friendIds}
+            crews={crews}
+            onCallCrew={onCallCrew}
           />
         ))}
       </div>
@@ -1138,6 +1215,7 @@ export default function App() {
   const [favoriteIds, setFavoriteIds] = useState(new Set());
   const [crews, setCrews] = useState([]);
   const [friends, setFriends] = useState([]);
+  const [crewCalls, setCrewCalls] = useState([]);
   const [tonightCrew, setTonightCrew] = useState(null);
   const [loading, setLoading] = useState(true);
   const [settingUp, setSettingUp] = useState(false);
@@ -1215,6 +1293,7 @@ export default function App() {
     const crewIds = (memberships || []).map((m) => m.crew_id);
     if (crewIds.length === 0) {
       setCrews([]);
+      setCrewCalls([]);
       return;
     }
     const { data: crewData } = await supabase
@@ -1222,6 +1301,7 @@ export default function App() {
       .select("*, crew_members(user_id, user_name)")
       .in("id", crewIds);
     setCrews(crewData || []);
+    loadCrewCalls(crewData || []);
   }, [session]);
 
   const loadFriends = useCallback(async () => {
@@ -1239,6 +1319,25 @@ export default function App() {
     const { data: profileRows } = await supabase.from("profiles").select("id, name").in("id", friendIds);
     setFriends(profileRows || []);
   }, [session]);
+
+  const loadCrewCalls = useCallback(
+    async (crewList) => {
+      if (!session) return;
+      const crewIds = (crewList || crews).map((c) => c.id);
+      if (crewIds.length === 0) {
+        setCrewCalls([]);
+        return;
+      }
+      const { data } = await supabase
+        .from("crew_calls")
+        .select("*")
+        .in("crew_id", crewIds)
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: false });
+      setCrewCalls((data || []).filter((c) => c.from_user_id !== session.user.id));
+    },
+    [session, crews]
+  );
 
   const loadStats = useCallback(async () => {
     if (!session) return;
@@ -1324,16 +1423,33 @@ export default function App() {
     loadStats();
   };
 
+  const callTheCrew = async (crewId, venue) => {
+    try {
+      const expiresAt = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+      await supabase.from("crew_calls").insert({
+        crew_id: crewId,
+        from_user_id: session.user.id,
+        from_user_name: profile.name,
+        venue_id: venue.id || null,
+        venue_name: venue.name,
+        expires_at: expiresAt,
+      });
+    } catch (e) {
+      setError("Couldn't call the crew — try again.");
+    }
+  };
+
   useEffect(() => {
     if (!session) return;
     const channel = supabase
       .channel("public:checkins-venues")
       .on("postgres_changes", { event: "*", schema: "public", table: "checkins" }, loadData)
       .on("postgres_changes", { event: "*", schema: "public", table: "venues" }, loadData)
+      .on("postgres_changes", { event: "*", schema: "public", table: "crew_calls" }, () => loadCrewCalls())
       .subscribe();
     const interval = setInterval(loadData, 60000); // refresh every minute to drop expired check-ins
     return () => { supabase.removeChannel(channel); clearInterval(interval); };
-  }, [session, loadData]);
+  }, [session, loadData, loadCrewCalls]);
 
   const handleSetName = async (name) => {
     setSettingUp(true);
@@ -1481,6 +1597,9 @@ export default function App() {
                   favoriteIds={favoriteIds}
                   onToggleFavorite={toggleFavorite}
                   friendIds={new Set(friends.map((f) => f.id))}
+                  crews={crews}
+                  onCallCrew={callTheCrew}
+                  crewCalls={crewCalls}
                   myName={profile.name}
                   onCheckOut={checkOut}
                   onStartCheckinAt={(name) => { setPrefillVenue(name); setPresetVenue(null); setView("checkin"); }}
