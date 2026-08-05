@@ -43,6 +43,17 @@ function eventDateLabel(dateStr) {
   return target.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
 }
 
+function isOpenLate(hours) {
+  if (!hours) return false;
+  if (hours.includes("24/7")) return true;
+  const ranges = hours.split(";").flatMap((part) => part.match(/(\d{2}:\d{2})-(\d{2}:\d{2})/g) || []);
+  return ranges.some((r) => {
+    const close = r.split("-")[1];
+    const h = parseInt(close.split(":")[0], 10);
+    return h >= 23 || h <= 6;
+  });
+}
+
 function Button({ children, onClick, variant = "primary", accent, style, disabled }) {
   const base = {
     padding: "12px 16px",
@@ -96,7 +107,7 @@ function NameGate({ onSet, busy }) {
   );
 }
 
-function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue }) {
+function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonightCrew }) {
   const [venueQuery, setVenueQuery] = useState(initialVenueQuery || "");
   const [venueResults, setVenueResults] = useState([]);
   const [selectedVenue, setSelectedVenue] = useState(
@@ -107,6 +118,7 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue }) {
   const [vibe, setVibe] = useState("chill");
   const [note, setNote] = useState("");
   const [hours, setHours] = useState(3);
+  const [includeCrew, setIncludeCrew] = useState(!!tonightCrew);
   const justSelectedRef = React.useRef(false);
 
   useEffect(() => {
@@ -141,6 +153,7 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue }) {
       lat: parseFloat(r.lat),
       lng: parseFloat(r.lon),
       website: (r.extratags && (r.extratags.website || r.extratags["contact:website"])) || null,
+      openingHours: (r.extratags && r.extratags.opening_hours) || null,
     });
     setVenueQuery(shortName);
     setVenueResults([]);
@@ -216,11 +229,40 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue }) {
         ))}
       </div>
 
+      {tonightCrew && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "10px 12px",
+            background: colors.surface,
+            border: `1px solid ${colors.line}`,
+            borderRadius: 9,
+            marginBottom: 20,
+          }}
+        >
+          <span style={{ fontFamily: bodyFont, fontSize: 13, color: colors.text }}>
+            👥 checking in with <strong>{tonightCrew.name}</strong>
+          </span>
+          <input type="checkbox" checked={includeCrew} onChange={(e) => setIncludeCrew(e.target.checked)} style={{ width: 18, height: 18 }} />
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 10 }}>
         <Button variant="ghost" onClick={onCancel} style={{ flex: 1 }}>cancel</Button>
         <Button
           disabled={!selectedVenue}
-          onClick={() => selectedVenue && onCreate({ venue: selectedVenue, vibe, note: note.trim(), hours })}
+          onClick={() =>
+            selectedVenue &&
+            onCreate({
+              venue: selectedVenue,
+              vibe,
+              note: note.trim(),
+              hours,
+              crewId: includeCrew && tonightCrew ? tonightCrew.id : null,
+            })
+          }
           style={{ flex: 2 }}
         >
           check in
@@ -285,6 +327,11 @@ function VenueCard({ group, myName, onCheckOut, onCheckInHere, defaultExpanded, 
           {v.emoji} {v.label.toUpperCase()}
         </span>
       </div>
+      {isOpenLate(group.venue.opening_hours) && (
+        <div style={{ fontFamily: monoFont, fontSize: 9.5, color: "#34E4EA", fontWeight: 700, marginBottom: 8 }}>
+          🌃 OPEN LATE
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.textMuted, fontWeight: 600 }}>
           {group.checkins.length === 0
@@ -330,6 +377,7 @@ function BottomNav({ view, onNavigate }) {
   const items = [
     { id: "feed", label: "Feed", emoji: "🌆" },
     { id: "checkin", label: "Check in", emoji: "➕" },
+    { id: "crew", label: "Crew", emoji: "👥" },
     { id: "you", label: "You", emoji: "🏆" },
   ];
   return (
@@ -354,6 +402,163 @@ function BottomNav({ view, onNavigate }) {
           {it.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+function CrewScreen({ crews, checkins, tonightCrew, setTonightCrew, onCreateCrew, onLeaveCrew, myId }) {
+  const [selectedId, setSelectedId] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  const selected = crews.find((c) => c.id === selectedId);
+
+  if (creating) {
+    return (
+      <div style={{ padding: "18px 0" }}>
+        <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 20, color: colors.text, marginBottom: 14 }}>
+          name your crew
+        </div>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. Friday Night Crew"
+          style={{
+            width: "100%", padding: "12px 14px", borderRadius: 10, border: `1px solid ${colors.line}`,
+            background: colors.surface, color: colors.text, fontFamily: bodyFont, fontSize: 14,
+            marginBottom: 14, boxSizing: "border-box",
+          }}
+        />
+        <div style={{ display: "flex", gap: 10 }}>
+          <Button variant="ghost" onClick={() => { setCreating(false); setName(""); }} style={{ flex: 1 }}>cancel</Button>
+          <Button
+            disabled={!name.trim()}
+            onClick={() => { onCreateCrew(name.trim()); setCreating(false); setName(""); }}
+            style={{ flex: 2 }}
+          >
+            create crew
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (selected) {
+    const members = selected.crew_members || [];
+    const memberStatus = members.map((m) => {
+      const activeCheckin = checkins.find((c) => c.crew_id === selected.id && c.user_id === m.user_id);
+      return { ...m, checkedIn: !!activeCheckin, checkin: activeCheckin };
+    });
+    const allCheckedIn = memberStatus.length > 0 && memberStatus.every((m) => m.checkedIn);
+    const inviteLink = `${window.location.origin}${window.location.pathname}?crew=${selected.id}`;
+    const isTonight = tonightCrew && tonightCrew.id === selected.id;
+
+    const shareInvite = async () => {
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: `Join ${selected.name} on NIGHTLY`, url: inviteLink });
+        } catch (e) {}
+      } else {
+        await navigator.clipboard.writeText(inviteLink);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    };
+
+    return (
+      <div style={{ padding: "18px 0" }}>
+        <button onClick={() => setSelectedId(null)} style={{ background: "none", border: "none", color: colors.textMuted, fontFamily: monoFont, fontSize: 11, cursor: "pointer", padding: 0, marginBottom: 14 }}>
+          ← all crews
+        </button>
+
+        <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 20, color: colors.text, marginBottom: 4 }}>
+          {selected.name}
+        </div>
+
+        {allCheckedIn && (
+          <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: "#FF3D9A", fontWeight: 700, marginBottom: 12 }}>
+            🎉 everyone's checked in!
+          </div>
+        )}
+
+        <div style={{ marginBottom: 16 }}>
+          {memberStatus.map((m) => (
+            <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: `1px solid ${colors.line}` }}>
+              <span style={{ fontSize: 14 }}>{m.checkedIn ? "✅" : "⭕"}</span>
+              <span style={{ fontFamily: bodyFont, fontSize: 13, color: colors.text, fontWeight: 600 }}>{m.user_name}</span>
+              {m.checkedIn && (
+                <span style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted }}>
+                  — {VIBES[m.checkin.vibe].emoji} checked in
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <Button
+          onClick={() => setTonightCrew(isTonight ? null : { id: selected.id, name: selected.name })}
+          style={{ width: "100%", marginBottom: 10 }}
+        >
+          {isTonight ? "✓ set as tonight's crew" : "use this crew tonight"}
+        </Button>
+        <Button variant="ghost" onClick={shareInvite} style={{ width: "100%", marginBottom: 10 }}>
+          {copied ? "link copied ✓" : "invite someone to this crew"}
+        </Button>
+        <Button variant="danger" onClick={() => { onLeaveCrew(selected.id); setSelectedId(null); }} style={{ width: "100%" }}>
+          leave crew
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: "18px 0" }}>
+      <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 20, color: colors.text, marginBottom: 4 }}>
+        your crews
+      </div>
+      <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 16, lineHeight: 1.4 }}>
+        build a crew for tonight, save it, and check in together.
+      </div>
+
+      {crews.length === 0 && (
+        <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.textMuted, marginBottom: 16 }}>
+          no crews yet — create one below.
+        </div>
+      )}
+
+      {crews.map((c) => {
+        const memberCount = (c.crew_members || []).length;
+        const isTonight = tonightCrew && tonightCrew.id === c.id;
+        return (
+          <button
+            key={c.id}
+            onClick={() => setSelectedId(c.id)}
+            style={{
+              display: "block",
+              width: "100%",
+              textAlign: "left",
+              background: colors.surface,
+              border: `1px solid ${isTonight ? "#FF3D9A" : colors.line}`,
+              borderRadius: 12,
+              padding: 14,
+              marginBottom: 10,
+              cursor: "pointer",
+            }}
+          >
+            <div style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 14, color: colors.text }}>
+              {c.name} {isTonight && <span style={{ color: "#FF3D9A", fontSize: 11 }}>· tonight</span>}
+            </div>
+            <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: colors.textMuted, marginTop: 2 }}>
+              {memberCount} {memberCount === 1 ? "member" : "members"}
+            </div>
+          </button>
+        );
+      })}
+
+      <Button onClick={() => setCreating(true)} style={{ width: "100%", marginTop: 6 }}>
+        + create a crew
+      </Button>
     </div>
   );
 }
@@ -454,12 +659,127 @@ function BadgesScreen({ stats, myId }) {
   );
 }
 
+function DanceEventsPanel() {
+  const [open, setOpen] = useState(false);
+  const [city, setCity] = useState("London");
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const apiKey = import.meta.env.VITE_TICKETMASTER_API_KEY;
+
+  const search = async () => {
+    if (!apiKey) {
+      setError("No Ticketmaster API key set — add VITE_TICKETMASTER_API_KEY to your .env");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `https://app.ticketmaster.com/discovery/v2/events.json?classificationName=dance&city=${encodeURIComponent(
+          city
+        )}&size=6&sort=date,asc&apikey=${apiKey}`
+      );
+      const data = await res.json();
+      setEvents((data._embedded && data._embedded.events) || []);
+      if (!data._embedded) setError("Nothing found for that city.");
+    } catch (e) {
+      setError("Couldn't reach Ticketmaster — try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        background: colors.surface,
+        border: `1px solid ${colors.line}`,
+        borderRadius: 14,
+        padding: 12,
+        marginBottom: 16,
+      }}
+    >
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          width: "100%",
+          background: "none",
+          border: "none",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          cursor: "pointer",
+          padding: 0,
+        }}
+      >
+        <span style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 13, color: colors.text }}>
+          🎵 dance events nearby
+        </span>
+        <span style={{ color: colors.textMuted, fontSize: 11 }}>{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+            <input
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              placeholder="City"
+              style={{
+                flex: 1,
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: `1px solid ${colors.line}`,
+                background: colors.bg,
+                color: colors.text,
+                fontFamily: bodyFont,
+                fontSize: 12.5,
+              }}
+            />
+            <Button onClick={search} style={{ padding: "8px 14px", fontSize: 11.5 }}>
+              {loading ? "..." : "search"}
+            </Button>
+          </div>
+
+          {error && <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: colors.textMuted, marginBottom: 8 }}>{error}</div>}
+
+          {events.map((ev) => (
+            <a
+              key={ev.id}
+              href={ev.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "block",
+                padding: "8px 10px",
+                borderRadius: 9,
+                background: colors.surfaceRaised,
+                marginBottom: 6,
+                textDecoration: "none",
+              }}
+            >
+              <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.text, fontWeight: 600 }}>{ev.name}</div>
+              <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted }}>
+                {ev._embedded && ev._embedded.venues && ev._embedded.venues[0] ? ev._embedded.venues[0].name : ""}
+                {ev.dates && ev.dates.start ? ` · ${ev.dates.start.localDate}` : ""}
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, myName, onCheckOut, onCheckInHere, onStartCheckinAt }) {
   const [query, setQuery] = useState("");
   const [osmResults, setOsmResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [sortMode, setSortMode] = useState("trending");
   const [spotlightId, setSpotlightId] = useState(null);
+  const [busyOnly, setBusyOnly] = useState(false);
+  const [openLateOnly, setOpenLateOnly] = useState(false);
 
   const favoriteGroups = Array.from(favoriteIds)
     .map((venueId) => {
@@ -481,9 +801,11 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, myName, onC
     return b.checkins.length - a.checkins.length;
   });
 
-  const filtered = query.trim()
+  let filtered = query.trim()
     ? sorted.filter((g) => g.venue.name.toLowerCase().includes(query.trim().toLowerCase()))
     : sorted;
+  if (busyOnly) filtered = filtered.filter((g) => g.checkins.length >= 3);
+  if (openLateOnly) filtered = filtered.filter((g) => isOpenLate(g.venue.opening_hours));
 
   const spotlightGroup = spotlightId ? groups.find((g) => g.venue.id === spotlightId) : null;
 
@@ -518,6 +840,8 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, myName, onC
 
   return (
     <div>
+      <DanceEventsPanel />
+
       {groups.length > 0 && (
         <Button
           onClick={surpriseMe}
@@ -593,7 +917,7 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, myName, onC
       />
 
       {groups.length > 0 && (
-        <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
           {[
             { id: "trending", label: "🔥 Trending" },
             { id: "newest", label: "🆕 Newest" },
@@ -615,6 +939,34 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, myName, onC
               }}
             >
               {s.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {groups.length > 0 && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+          {[
+            { key: "busy", label: "👥 Busy (3+)", active: busyOnly, toggle: () => setBusyOnly((b) => !b) },
+            { key: "late", label: "🌃 Open late", active: openLateOnly, toggle: () => setOpenLateOnly((o) => !o) },
+          ].map((f) => (
+            <button
+              key={f.key}
+              onClick={f.toggle}
+              style={{
+                flex: 1,
+                padding: "7px 0",
+                borderRadius: 10,
+                border: `1px solid ${f.active ? "#34E4EA" : colors.line}`,
+                background: f.active ? "#34E4EA22" : "transparent",
+                color: f.active ? "#34E4EA" : colors.textMuted,
+                fontFamily: bodyFont,
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {f.label}
             </button>
           ))}
         </div>
@@ -692,6 +1044,8 @@ export default function App() {
   const [checkins, setCheckins] = useState([]);
   const [venues, setVenues] = useState({});
   const [favoriteIds, setFavoriteIds] = useState(new Set());
+  const [crews, setCrews] = useState([]);
+  const [tonightCrew, setTonightCrew] = useState(null);
   const [loading, setLoading] = useState(true);
   const [settingUp, setSettingUp] = useState(false);
   const [error, setError] = useState(null);
@@ -713,6 +1067,25 @@ export default function App() {
         setSession(currentSession);
         const { data: profileRow } = await supabase.from("profiles").select("*").eq("id", currentSession.user.id).maybeSingle();
         setProfile(profileRow || null);
+
+        if (profileRow) {
+          try {
+            const params = new URLSearchParams(window.location.search);
+            const inviterId = params.get("invite");
+            const crewInviteId = params.get("crew");
+            if (inviterId && inviterId !== currentSession.user.id) {
+              await supabase.from("friendships").insert({ user_id_a: currentSession.user.id, user_id_b: inviterId });
+            }
+            if (crewInviteId) {
+              await supabase
+                .from("crew_members")
+                .insert({ crew_id: crewInviteId, user_id: currentSession.user.id, user_name: profileRow.name });
+            }
+            if (inviterId || crewInviteId) window.history.replaceState({}, "", window.location.pathname);
+          } catch (e) {
+            // Non-fatal — duplicate friendship/crew membership is fine to ignore
+          }
+        }
       } catch (e) {
         setError("Couldn't connect. Check your Supabase setup in .env");
       } finally {
@@ -743,6 +1116,21 @@ export default function App() {
     setFavoriteIds(new Set((data || []).map((f) => f.venue_id)));
   }, [session]);
 
+  const loadCrews = useCallback(async () => {
+    if (!session) return;
+    const { data: memberships } = await supabase.from("crew_members").select("crew_id").eq("user_id", session.user.id);
+    const crewIds = (memberships || []).map((m) => m.crew_id);
+    if (crewIds.length === 0) {
+      setCrews([]);
+      return;
+    }
+    const { data: crewData } = await supabase
+      .from("crews")
+      .select("*, crew_members(user_id, user_name)")
+      .in("id", crewIds);
+    setCrews(crewData || []);
+  }, [session]);
+
   const loadStats = useCallback(async () => {
     if (!session) return;
     const { data: mine } = await supabase.from("checkins").select("venue_id").eq("user_id", session.user.id);
@@ -756,7 +1144,7 @@ export default function App() {
   }, [session]);
 
   useEffect(() => {
-    if (session) { loadData(); loadStats(); loadFavorites(); }
+    if (session) { loadData(); loadStats(); loadFavorites(); loadCrews(); }
   }, [session, loadData]);
 
   const toggleFavorite = async (venueId) => {
@@ -771,6 +1159,27 @@ export default function App() {
       setFavoriteIds(next);
       await supabase.from("favorites").insert({ user_id: session.user.id, venue_id: venueId });
     }
+  };
+
+  const createCrew = async (name) => {
+    try {
+      const { data: newCrew, error: crewErr } = await supabase
+        .from("crews")
+        .insert({ name, created_by: session.user.id })
+        .select()
+        .single();
+      if (crewErr) throw crewErr;
+      await supabase.from("crew_members").insert({ crew_id: newCrew.id, user_id: session.user.id, user_name: profile.name });
+      loadCrews();
+    } catch (e) {
+      setError("Couldn't create crew — try again.");
+    }
+  };
+
+  const leaveCrew = async (crewId) => {
+    await supabase.from("crew_members").delete().eq("crew_id", crewId).eq("user_id", session.user.id);
+    if (tonightCrew && tonightCrew.id === crewId) setTonightCrew(null);
+    loadCrews();
   };
 
   useEffect(() => {
@@ -799,12 +1208,16 @@ export default function App() {
     try {
       const params = new URLSearchParams(window.location.search);
       const inviterId = params.get("invite");
+      const crewInviteId = params.get("crew");
       if (inviterId && inviterId !== session.user.id) {
         await supabase.from("friendships").insert({ user_id_a: session.user.id, user_id_b: inviterId });
-        window.history.replaceState({}, "", window.location.pathname);
       }
+      if (crewInviteId) {
+        await supabase.from("crew_members").insert({ crew_id: crewInviteId, user_id: session.user.id, user_name: name });
+      }
+      if (inviterId || crewInviteId) window.history.replaceState({}, "", window.location.pathname);
     } catch (e) {
-      // Non-fatal — a duplicate/failed friendship shouldn't block onboarding
+      // Non-fatal — a duplicate/failed friendship or crew join shouldn't block onboarding
     }
   };
 
@@ -822,7 +1235,7 @@ export default function App() {
         } else {
           const { data: newVenue, error: venueErr } = await supabase
             .from("venues")
-            .insert({ name: data.venue.name, lat: data.venue.lat, lng: data.venue.lng, osm_website: data.venue.website })
+            .insert({ name: data.venue.name, lat: data.venue.lat, lng: data.venue.lng, osm_website: data.venue.website, opening_hours: data.venue.openingHours })
             .select()
             .single();
           if (venueErr) throw venueErr;
@@ -838,6 +1251,7 @@ export default function App() {
         note: data.note || null,
         visibility: "shared",
         expires_at: expiresAt,
+        crew_id: data.crewId || null,
       });
       if (checkinErr) throw checkinErr;
       setView("feed");
@@ -897,6 +1311,17 @@ export default function App() {
                   onCancel={() => { setPrefillVenue(""); setPresetVenue(null); setView("feed"); }}
                   initialVenueQuery={prefillVenue}
                   presetVenue={presetVenue}
+                  tonightCrew={tonightCrew}
+                />
+              ) : view === "crew" ? (
+                <CrewScreen
+                  crews={crews}
+                  checkins={checkins}
+                  tonightCrew={tonightCrew}
+                  setTonightCrew={setTonightCrew}
+                  onCreateCrew={createCrew}
+                  onLeaveCrew={leaveCrew}
+                  myId={session.user.id}
                 />
               ) : view === "you" ? (
                 <BadgesScreen stats={stats} myId={session.user.id} />
