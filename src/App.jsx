@@ -469,13 +469,25 @@ function BottomNav({ view, onNavigate }) {
   );
 }
 
-function CrewScreen({ crews, checkins, tonightCrew, setTonightCrew, onCreateCrew, onLeaveCrew, myId }) {
+function CrewScreen({ crews, checkins, tonightCrew, setTonightCrew, onCreateCrew, onLeaveCrew, onSearchProfiles, onAddCrewMember, myId }) {
   const [selectedId, setSelectedId] = useState(null);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [copied, setCopied] = useState(false);
+  const [memberQuery, setMemberQuery] = useState("");
+  const [memberResults, setMemberResults] = useState([]);
 
   const selected = crews.find((c) => c.id === selectedId);
+
+  useEffect(() => {
+    if (!selected) return;
+    const timer = setTimeout(async () => {
+      const results = await onSearchProfiles(memberQuery);
+      const existingIds = new Set((selected.crew_members || []).map((m) => m.user_id));
+      setMemberResults(results.filter((r) => !existingIds.has(r.id)));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [memberQuery, selected, onSearchProfiles]);
 
   if (creating) {
     return (
@@ -558,6 +570,41 @@ function CrewScreen({ crews, checkins, tonightCrew, setTonightCrew, onCreateCrew
             </div>
           ))}
         </div>
+
+        <div style={{ fontFamily: monoFont, fontSize: 10, letterSpacing: "0.08em", color: colors.textMuted, textTransform: "uppercase", marginBottom: 8 }}>
+          add a member
+        </div>
+        <input
+          value={memberQuery}
+          onChange={(e) => setMemberQuery(e.target.value)}
+          placeholder="search, or browse everyone on NIGHTLY..."
+          style={{
+            width: "100%",
+            padding: "10px 12px",
+            borderRadius: 10,
+            border: `1px solid ${colors.line}`,
+            background: colors.surface,
+            color: colors.text,
+            fontFamily: bodyFont,
+            fontSize: 13,
+            boxSizing: "border-box",
+            marginBottom: 8,
+          }}
+        />
+        {memberResults.length > 0 && (
+          <div style={{ background: colors.surfaceRaised, border: `1px solid ${colors.line}`, borderRadius: 9, marginBottom: 16, overflow: "hidden", maxHeight: 180, overflowY: "auto" }}>
+            {memberResults.map((r) => (
+              <div
+                key={r.id}
+                onClick={() => { onAddCrewMember(selected.id, r.id, r.name); setMemberQuery(""); }}
+                style={{ padding: "9px 12px", fontSize: 12.5, color: colors.text, cursor: "pointer", borderBottom: `1px solid ${colors.line}`, display: "flex", justifyContent: "space-between" }}
+              >
+                <span>{r.name}</span>
+                <span style={{ color: "#FF3D9A", fontWeight: 700 }}>+ add</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         <Button
           onClick={() => setTonightCrew(isTonight ? null : { id: selected.id, name: selected.name })}
@@ -683,38 +730,37 @@ function BadgesScreen({ stats, myId, friends, onSearchProfiles, onAddFriend, onR
       <div style={{ fontFamily: monoFont, fontSize: 10, letterSpacing: "0.08em", color: colors.textMuted, textTransform: "uppercase", marginBottom: 8 }}>
         my friends
       </div>
-      <div style={{ position: "relative", marginBottom: 10 }}>
-        <input
-          value={friendQuery}
-          onChange={(e) => setFriendQuery(e.target.value)}
-          placeholder="add a friend by name..."
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: `1px solid ${colors.line}`,
-            background: colors.surface,
-            color: colors.text,
-            fontFamily: bodyFont,
-            fontSize: 13,
-            boxSizing: "border-box",
-          }}
-        />
-        {friendResults.length > 0 && (
-          <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10, background: colors.surfaceRaised, border: `1px solid ${colors.line}`, borderRadius: 9, marginTop: 4, overflow: "hidden" }}>
-            {friendResults.map((r) => (
-              <div
-                key={r.id}
-                onClick={() => { onAddFriend(r.id); setFriendQuery(""); setFriendResults([]); }}
-                style={{ padding: "9px 12px", fontSize: 12.5, color: colors.text, cursor: "pointer", borderBottom: `1px solid ${colors.line}`, display: "flex", justifyContent: "space-between" }}
-              >
-                <span>{r.name}</span>
-                <span style={{ color: "#FF3D9A", fontWeight: 700 }}>+ add</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      <input
+        value={friendQuery}
+        onChange={(e) => setFriendQuery(e.target.value)}
+        placeholder="search, or browse everyone on NIGHTLY..."
+        style={{
+          width: "100%",
+          padding: "10px 12px",
+          borderRadius: 10,
+          border: `1px solid ${colors.line}`,
+          background: colors.surface,
+          color: colors.text,
+          fontFamily: bodyFont,
+          fontSize: 13,
+          boxSizing: "border-box",
+          marginBottom: 8,
+        }}
+      />
+      {friendResults.length > 0 && (
+        <div style={{ background: colors.surfaceRaised, border: `1px solid ${colors.line}`, borderRadius: 9, marginBottom: 14, overflow: "hidden", maxHeight: 200, overflowY: "auto" }}>
+          {friendResults.map((r) => (
+            <div
+              key={r.id}
+              onClick={() => { onAddFriend(r.id); setFriendQuery(""); }}
+              style={{ padding: "9px 12px", fontSize: 12.5, color: colors.text, cursor: "pointer", borderBottom: `1px solid ${colors.line}`, display: "flex", justifyContent: "space-between" }}
+            >
+              <span>{r.name}</span>
+              <span style={{ color: "#FF3D9A", fontWeight: 700 }}>+ add</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {friends.length === 0 ? (
         <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 20 }}>
@@ -1390,14 +1436,21 @@ export default function App() {
     loadCrews();
   };
 
+  const addCrewMember = async (crewId, userId, userName) => {
+    try {
+      await supabase.from("crew_members").insert({ crew_id: crewId, user_id: userId, user_name: userName });
+      loadCrews();
+    } catch (e) {
+      // Likely already a member — safe to ignore
+    }
+  };
+
   const searchProfiles = async (query) => {
-    if (!query || query.trim().length < 2) return [];
-    const { data } = await supabase
-      .from("profiles")
-      .select("id, name")
-      .ilike("name", `%${query.trim()}%`)
-      .neq("id", session.user.id)
-      .limit(8);
+    let builder = supabase.from("profiles").select("id, name").neq("id", session.user.id).limit(15);
+    if (query && query.trim().length >= 2) {
+      builder = builder.ilike("name", `%${query.trim()}%`);
+    }
+    const { data } = await builder;
     return data || [];
   };
 
@@ -1579,6 +1632,8 @@ export default function App() {
                   setTonightCrew={setTonightCrew}
                   onCreateCrew={createCrew}
                   onLeaveCrew={leaveCrew}
+                  onSearchProfiles={searchProfiles}
+                  onAddCrewMember={addCrewMember}
                   myId={session.user.id}
                 />
               ) : view === "you" ? (
