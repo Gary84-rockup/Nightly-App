@@ -31,6 +31,18 @@ const displayFont = "'Space Grotesk', sans-serif";
 const bodyFont = "'Inter', sans-serif";
 const monoFont = "'IBM Plex Mono', monospace";
 
+function eventDateLabel(dateStr) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(dateStr + "T00:00:00");
+  const diffDays = Math.round((target - today) / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return "Tonight";
+  if (diffDays === 1) return "Tomorrow";
+  if (diffDays < 0) return "Past";
+  if (diffDays <= 6) return `In ${diffDays} days`;
+  return target.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+}
+
 function Button({ children, onClick, variant = "primary", accent, style, disabled }) {
   const base = {
     padding: "12px 16px",
@@ -194,15 +206,19 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery }) {
   );
 }
 
-function VenueCard({ group, myName, onCheckOut }) {
+function VenueCard({ group, myName, onCheckOut, defaultExpanded }) {
+  const [expanded, setExpanded] = useState(!!defaultExpanded);
   const vibeCounts = {};
   group.checkins.forEach((c) => { vibeCounts[c.vibe] = (vibeCounts[c.vibe] || 0) + 1; });
   const topVibe = Object.entries(vibeCounts).sort((a, b) => b[1] - a[1])[0][0];
   const v = VIBES[topVibe];
   const mine = group.checkins.find((c) => c.user_name === myName);
+  const isPumping = group.checkins.length >= 5;
 
   return (
     <div
+      onClick={() => setExpanded((e) => !e)}
+      className={isPumping ? "nightly-pulse" : ""}
       style={{
         background: v.gradient,
         border: `1px solid ${v.color}44`,
@@ -210,6 +226,7 @@ function VenueCard({ group, myName, onCheckOut }) {
         padding: 16,
         marginBottom: 14,
         boxShadow: `0 0 24px -8px ${v.color}66`,
+        cursor: "pointer",
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
@@ -229,25 +246,33 @@ function VenueCard({ group, myName, onCheckOut }) {
           {v.emoji} {v.label.toUpperCase()}
         </span>
       </div>
-      <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.textMuted, marginBottom: 10, fontWeight: 600 }}>
-        🎉 {group.checkins.length} {group.checkins.length === 1 ? "person" : "people"} here right now
-      </div>
-      {group.checkins.slice(0, 4).map((c) => (
-        <div key={c.id} style={{ fontFamily: bodyFont, fontSize: 12, color: colors.text, marginBottom: 4, fontWeight: 500 }}>
-          <span style={{ color: VIBES[c.vibe].color }}>{VIBES[c.vibe].emoji}</span> {c.user_name}
-          {c.note ? <span style={{ color: colors.textMuted }}> — "{c.note}"</span> : null}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.textMuted, fontWeight: 600 }}>
+          🎉 {group.checkins.length} {group.checkins.length === 1 ? "person" : "people"} here right now
         </div>
-      ))}
-      {group.venue.osm_website && (
-        <a href={group.venue.osm_website} target="_blank" rel="noopener noreferrer" style={{ fontFamily: bodyFont, fontSize: 11, color: "#34E4EA", textDecoration: "underline", fontWeight: 600 }}>
-          🌐 venue website
-        </a>
-      )}
-      {mine && (
-        <div style={{ marginTop: 10 }}>
-          <Button variant="danger" onClick={() => onCheckOut(mine.id)} style={{ padding: "7px 12px", fontSize: 11.5 }}>
-            check out
-          </Button>
+        <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted }}>{expanded ? "▲" : "▼"}</div>
+      </div>
+
+      {expanded && (
+        <div style={{ marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
+          {group.checkins.map((c) => (
+            <div key={c.id} style={{ fontFamily: bodyFont, fontSize: 12, color: colors.text, marginBottom: 4, fontWeight: 500 }}>
+              <span style={{ color: VIBES[c.vibe].color }}>{VIBES[c.vibe].emoji}</span> {c.user_name}
+              {c.note ? <span style={{ color: colors.textMuted }}> — "{c.note}"</span> : null}
+            </div>
+          ))}
+          {group.venue.osm_website && (
+            <a href={group.venue.osm_website} target="_blank" rel="noopener noreferrer" style={{ fontFamily: bodyFont, fontSize: 11, color: "#34E4EA", textDecoration: "underline", fontWeight: 600 }}>
+              🌐 venue website
+            </a>
+          )}
+          {mine && (
+            <div style={{ marginTop: 10 }}>
+              <Button variant="danger" onClick={() => onCheckOut(mine.id)} style={{ padding: "7px 12px", fontSize: 11.5 }}>
+                check out
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -386,10 +411,30 @@ function FeedScreen({ groups, myName, onCheckOut, onStartCheckinAt }) {
   const [query, setQuery] = useState("");
   const [osmResults, setOsmResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [sortMode, setSortMode] = useState("trending");
+  const [spotlightId, setSpotlightId] = useState(null);
+
+  const sorted = [...groups].sort((a, b) => {
+    if (sortMode === "newest") {
+      const aLatest = Math.max(...a.checkins.map((c) => new Date(c.created_at).getTime()));
+      const bLatest = Math.max(...b.checkins.map((c) => new Date(c.created_at).getTime()));
+      return bLatest - aLatest;
+    }
+    return b.checkins.length - a.checkins.length;
+  });
 
   const filtered = query.trim()
-    ? groups.filter((g) => g.venue.name.toLowerCase().includes(query.trim().toLowerCase()))
-    : groups;
+    ? sorted.filter((g) => g.venue.name.toLowerCase().includes(query.trim().toLowerCase()))
+    : sorted;
+
+  const spotlightGroup = spotlightId ? groups.find((g) => g.venue.id === spotlightId) : null;
+
+  const surpriseMe = () => {
+    if (groups.length === 0) return;
+    const topPool = groups.slice(0, Math.max(3, Math.ceil(groups.length / 2)));
+    const pick = topPool[Math.floor(Math.random() * topPool.length)];
+    setSpotlightId(pick.venue.id);
+  };
 
   useEffect(() => {
     if (filtered.length > 0 || query.trim().length < 3) {
@@ -415,6 +460,43 @@ function FeedScreen({ groups, myName, onCheckOut, onStartCheckinAt }) {
 
   return (
     <div>
+      {groups.length > 0 && (
+        <Button
+          onClick={surpriseMe}
+          style={{ width: "100%", marginBottom: 12, background: "linear-gradient(90deg, #FF3D9A, #7C4DFF)" }}
+        >
+          🎲 surprise me — where should I go?
+        </Button>
+      )}
+
+      {spotlightGroup && (
+        <div
+          style={{
+            background: "linear-gradient(135deg, #2e1424, #14282e)",
+            border: "1px solid #FF3D9A66",
+            borderRadius: 16,
+            padding: 14,
+            marginBottom: 14,
+            boxShadow: "0 0 24px -6px #FF3D9A88",
+          }}
+        >
+          <div style={{ fontFamily: monoFont, fontSize: 9, letterSpacing: "0.08em", color: "#FF3D9A", textTransform: "uppercase", marginBottom: 4, fontWeight: 700 }}>
+            tonight's pick ✨
+          </div>
+          <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 16, color: colors.text, marginBottom: 8 }}>
+            {spotlightGroup.venue.name}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Button onClick={() => onStartCheckinAt(spotlightGroup.venue.name)} style={{ flex: 1, padding: "9px 0", fontSize: 12 }}>
+              check in here
+            </Button>
+            <Button variant="ghost" onClick={() => setSpotlightId(null)} style={{ padding: "9px 12px", fontSize: 12 }}>
+              dismiss
+            </Button>
+          </div>
+        </div>
+      )}
+
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
@@ -428,10 +510,38 @@ function FeedScreen({ groups, myName, onCheckOut, onStartCheckinAt }) {
           color: colors.text,
           fontFamily: bodyFont,
           fontSize: 13,
-          marginBottom: 14,
+          marginBottom: 10,
           boxSizing: "border-box",
         }}
       />
+
+      {groups.length > 0 && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+          {[
+            { id: "trending", label: "🔥 Trending" },
+            { id: "newest", label: "🆕 Newest" },
+          ].map((s) => (
+            <button
+              key={s.id}
+              onClick={() => setSortMode(s.id)}
+              style={{
+                flex: 1,
+                padding: "8px 0",
+                borderRadius: 10,
+                border: `1px solid ${sortMode === s.id ? "#FF3D9A" : colors.line}`,
+                background: sortMode === s.id ? "#FF3D9A22" : "transparent",
+                color: sortMode === s.id ? "#FF3D9A" : colors.textMuted,
+                fontFamily: bodyFont,
+                fontSize: 11.5,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {query.trim() && filtered.length > 0 && (
         <div style={{ fontFamily: bodyFont, fontSize: 11, color: "#34E4EA", fontWeight: 600, marginBottom: 8 }}>
