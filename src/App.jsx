@@ -230,12 +230,14 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue }) {
   );
 }
 
-function VenueCard({ group, myName, onCheckOut, onCheckInHere, defaultExpanded }) {
+function VenueCard({ group, myName, onCheckOut, onCheckInHere, defaultExpanded, isFavorite, onToggleFavorite }) {
   const [expanded, setExpanded] = useState(!!defaultExpanded);
   const vibeCounts = {};
   group.checkins.forEach((c) => { vibeCounts[c.vibe] = (vibeCounts[c.vibe] || 0) + 1; });
-  const topVibe = Object.entries(vibeCounts).sort((a, b) => b[1] - a[1])[0][0];
-  const v = VIBES[topVibe];
+  const topVibeEntry = Object.entries(vibeCounts).sort((a, b) => b[1] - a[1])[0];
+  const v = topVibeEntry
+    ? VIBES[topVibeEntry[0]]
+    : { label: "Quiet for now", color: "#6B5F82", emoji: "🌑", gradient: "linear-gradient(135deg, #1A1226, #1A1226)" };
   const mine = group.checkins.find((c) => c.user_name === myName);
   const isPumping = group.checkins.length >= 5;
 
@@ -254,7 +256,18 @@ function VenueCard({ group, myName, onCheckOut, onCheckInHere, defaultExpanded }
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-        <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 17, color: colors.text }}>{group.venue.name}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleFavorite(group.venue.id); }}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 16, flexShrink: 0 }}
+            aria-label="Toggle favourite"
+          >
+            {isFavorite ? "⭐" : "☆"}
+          </button>
+          <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 17, color: colors.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {group.venue.name}
+          </div>
+        </div>
         <span
           style={{
             fontFamily: monoFont,
@@ -265,6 +278,8 @@ function VenueCard({ group, myName, onCheckOut, onCheckInHere, defaultExpanded }
             borderRadius: 20,
             padding: "3px 10px",
             whiteSpace: "nowrap",
+            flexShrink: 0,
+            marginLeft: 8,
           }}
         >
           {v.emoji} {v.label.toUpperCase()}
@@ -272,7 +287,9 @@ function VenueCard({ group, myName, onCheckOut, onCheckInHere, defaultExpanded }
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.textMuted, fontWeight: 600 }}>
-          🎉 {group.checkins.length} {group.checkins.length === 1 ? "person" : "people"} here right now
+          {group.checkins.length === 0
+            ? "nobody's checked in — be the first"
+            : `🎉 ${group.checkins.length} ${group.checkins.length === 1 ? "person" : "people"} here right now`}
         </div>
         <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted }}>{expanded ? "▲" : "▼"}</div>
       </div>
@@ -437,14 +454,25 @@ function BadgesScreen({ stats, myId }) {
   );
 }
 
-function FeedScreen({ groups, myName, onCheckOut, onCheckInHere, onStartCheckinAt }) {
+function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, myName, onCheckOut, onCheckInHere, onStartCheckinAt }) {
   const [query, setQuery] = useState("");
   const [osmResults, setOsmResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [sortMode, setSortMode] = useState("trending");
   const [spotlightId, setSpotlightId] = useState(null);
 
-  const sorted = [...groups].sort((a, b) => {
+  const favoriteGroups = Array.from(favoriteIds)
+    .map((venueId) => {
+      const existing = groups.find((g) => g.venue.id === venueId);
+      if (existing) return existing;
+      const venue = venues[venueId];
+      return venue ? { venue, checkins: [] } : null;
+    })
+    .filter(Boolean);
+
+  const nonFavoriteGroups = groups.filter((g) => !favoriteIds.has(g.venue.id));
+
+  const sorted = [...nonFavoriteGroups].sort((a, b) => {
     if (sortMode === "newest") {
       const aLatest = Math.max(...a.checkins.map((c) => new Date(c.created_at).getTime()));
       const bLatest = Math.max(...b.checkins.map((c) => new Date(c.created_at).getTime()));
@@ -524,6 +552,25 @@ function FeedScreen({ groups, myName, onCheckOut, onCheckInHere, onStartCheckinA
               dismiss
             </Button>
           </div>
+        </div>
+      )}
+
+      {favoriteGroups.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontFamily: monoFont, fontSize: 10, letterSpacing: "0.08em", color: colors.textMuted, textTransform: "uppercase", marginBottom: 8 }}>
+            ⭐ your favourites
+          </div>
+          {favoriteGroups.map((g) => (
+            <VenueCard
+              key={g.venue.id}
+              group={g}
+              myName={myName}
+              onCheckOut={onCheckOut}
+              onCheckInHere={onCheckInHere}
+              isFavorite={true}
+              onToggleFavorite={onToggleFavorite}
+            />
+          ))}
         </div>
       )}
 
@@ -624,7 +671,15 @@ function FeedScreen({ groups, myName, onCheckOut, onCheckInHere, onStartCheckinA
 
       <div style={{ paddingBottom: 20 }}>
         {filtered.map((g) => (
-          <VenueCard key={g.venue.id} group={g} myName={myName} onCheckOut={onCheckOut} onCheckInHere={onCheckInHere} />
+          <VenueCard
+            key={g.venue.id}
+            group={g}
+            myName={myName}
+            onCheckOut={onCheckOut}
+            onCheckInHere={onCheckInHere}
+            isFavorite={false}
+            onToggleFavorite={onToggleFavorite}
+          />
         ))}
       </div>
     </div>
@@ -636,6 +691,7 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [checkins, setCheckins] = useState([]);
   const [venues, setVenues] = useState({});
+  const [favoriteIds, setFavoriteIds] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [settingUp, setSettingUp] = useState(false);
   const [error, setError] = useState(null);
@@ -681,6 +737,12 @@ export default function App() {
     setCheckins(checkinData || []);
   }, []);
 
+  const loadFavorites = useCallback(async () => {
+    if (!session) return;
+    const { data } = await supabase.from("favorites").select("venue_id").eq("user_id", session.user.id);
+    setFavoriteIds(new Set((data || []).map((f) => f.venue_id)));
+  }, [session]);
+
   const loadStats = useCallback(async () => {
     if (!session) return;
     const { data: mine } = await supabase.from("checkins").select("venue_id").eq("user_id", session.user.id);
@@ -694,8 +756,22 @@ export default function App() {
   }, [session]);
 
   useEffect(() => {
-    if (session) { loadData(); loadStats(); }
+    if (session) { loadData(); loadStats(); loadFavorites(); }
   }, [session, loadData]);
+
+  const toggleFavorite = async (venueId) => {
+    const isFav = favoriteIds.has(venueId);
+    const next = new Set(favoriteIds);
+    if (isFav) {
+      next.delete(venueId);
+      setFavoriteIds(next);
+      await supabase.from("favorites").delete().eq("user_id", session.user.id).eq("venue_id", venueId);
+    } else {
+      next.add(venueId);
+      setFavoriteIds(next);
+      await supabase.from("favorites").insert({ user_id: session.user.id, venue_id: venueId });
+    }
+  };
 
   useEffect(() => {
     if (!session) return;
@@ -827,6 +903,9 @@ export default function App() {
               ) : (
                 <FeedScreen
                   groups={groups}
+                  venues={venues}
+                  favoriteIds={favoriteIds}
+                  onToggleFavorite={toggleFavorite}
                   myName={profile.name}
                   onCheckOut={checkOut}
                   onStartCheckinAt={(name) => { setPrefillVenue(name); setPresetVenue(null); setView("checkin"); }}
