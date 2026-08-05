@@ -24,6 +24,7 @@ const BADGES = [
   { id: "legend", label: "Nightly Legend", emoji: "👑", need: (s) => s.checkinCount >= 15, desc: "15 check-ins" },
   { id: "explorer", label: "Explorer", emoji: "🗺️", need: (s) => s.venueCount >= 3, desc: "3 different venues" },
   { id: "nightowl", label: "Night Owl", emoji: "🦉", need: (s) => s.venueCount >= 8, desc: "8 different venues" },
+  { id: "connector", label: "Connector", emoji: "🤝", need: (s) => s.friendCount >= 3, desc: "3 friends on NIGHTLY" },
 ];
 
 const displayFont = "'Space Grotesk', sans-serif";
@@ -83,8 +84,8 @@ function NameGate({ onSet, busy }) {
   );
 }
 
-function CheckInForm({ onCreate, onCancel }) {
-  const [venueQuery, setVenueQuery] = useState("");
+function CheckInForm({ onCreate, onCancel, initialVenueQuery }) {
+  const [venueQuery, setVenueQuery] = useState(initialVenueQuery || "");
   const [venueResults, setVenueResults] = useState([]);
   const [selectedVenue, setSelectedVenue] = useState(null);
   const [vibe, setVibe] = useState("chill");
@@ -253,7 +254,7 @@ function VenueCard({ group, myName, onCheckOut }) {
   );
 }
 
-function BottomNav({ view, setView }) {
+function BottomNav({ view, onNavigate }) {
   const items = [
     { id: "feed", label: "Feed", emoji: "🌆" },
     { id: "checkin", label: "Check in", emoji: "➕" },
@@ -264,7 +265,7 @@ function BottomNav({ view, setView }) {
       {items.map((it) => (
         <button
           key={it.id}
-          onClick={() => setView(it.id)}
+          onClick={() => onNavigate(it.id)}
           style={{
             flex: 1,
             padding: "12px 0 14px",
@@ -285,11 +286,49 @@ function BottomNav({ view, setView }) {
   );
 }
 
-function BadgesScreen({ stats }) {
+function BadgesScreen({ stats, myId }) {
+  const [copied, setCopied] = useState(false);
   const unlocked = BADGES.filter((b) => b.need(stats));
   const locked = BADGES.filter((b) => !b.need(stats));
+
+  const inviteLink = `${window.location.origin}${window.location.pathname}?invite=${myId}`;
+
+  const shareLink = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "Join me on NIGHTLY", url: inviteLink });
+      } catch (e) {
+        // user cancelled the share sheet — nothing to do
+      }
+    } else {
+      await navigator.clipboard.writeText(inviteLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   return (
     <div style={{ padding: "20px 0 20px" }}>
+      <div
+        style={{
+          background: "linear-gradient(135deg, #2e1424, #14282e)",
+          border: "1px solid #FF3D9A44",
+          borderRadius: 16,
+          padding: 16,
+          marginBottom: 20,
+        }}
+      >
+        <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 15, color: colors.text, marginBottom: 4 }}>
+          bring your crew 🎉
+        </div>
+        <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 12, lineHeight: 1.4 }}>
+          share your link — anyone who joins through it is automatically your friend on NIGHTLY.
+        </div>
+        <Button onClick={shareLink} style={{ width: "100%" }}>
+          {copied ? "link copied ✓" : "share my invite link"}
+        </Button>
+      </div>
+
       <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
         <div style={{ flex: 1, background: colors.surface, borderRadius: 14, padding: 14, textAlign: "center" }}>
           <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 24, color: "#FF3D9A" }}>{stats.checkinCount}</div>
@@ -298,6 +337,10 @@ function BadgesScreen({ stats }) {
         <div style={{ flex: 1, background: colors.surface, borderRadius: 14, padding: 14, textAlign: "center" }}>
           <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 24, color: "#34E4EA" }}>{stats.venueCount}</div>
           <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: colors.textMuted, fontWeight: 600 }}>venues</div>
+        </div>
+        <div style={{ flex: 1, background: colors.surface, borderRadius: 14, padding: 14, textAlign: "center" }}>
+          <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 24, color: "#FFC24B" }}>{stats.friendCount}</div>
+          <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: colors.textMuted, fontWeight: 600 }}>friends</div>
         </div>
       </div>
 
@@ -339,6 +382,115 @@ function BadgesScreen({ stats }) {
   );
 }
 
+function FeedScreen({ groups, myName, onCheckOut, onStartCheckinAt }) {
+  const [query, setQuery] = useState("");
+  const [osmResults, setOsmResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+
+  const filtered = query.trim()
+    ? groups.filter((g) => g.venue.name.toLowerCase().includes(query.trim().toLowerCase()))
+    : groups;
+
+  useEffect(() => {
+    if (filtered.length > 0 || query.trim().length < 3) {
+      setOsmResults([]);
+      return;
+    }
+    setSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&limit=4&q=${encodeURIComponent(query)}`
+        );
+        const data = await res.json();
+        setOsmResults(data);
+      } catch (e) {
+        setOsmResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [query, filtered.length]);
+
+  return (
+    <div>
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="thinking about somewhere? search it..."
+        style={{
+          width: "100%",
+          padding: "11px 13px",
+          borderRadius: 12,
+          border: `1px solid ${colors.line}`,
+          background: colors.surface,
+          color: colors.text,
+          fontFamily: bodyFont,
+          fontSize: 13,
+          marginBottom: 14,
+          boxSizing: "border-box",
+        }}
+      />
+
+      {query.trim() && filtered.length > 0 && (
+        <div style={{ fontFamily: bodyFont, fontSize: 11, color: "#34E4EA", fontWeight: 600, marginBottom: 8 }}>
+          {filtered.length} spot{filtered.length === 1 ? "" : "s"} matching "{query}"
+        </div>
+      )}
+
+      {filtered.length === 0 && groups.length > 0 && query.trim() && osmResults.length === 0 && !searching && (
+        <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.textMuted, marginBottom: 12 }}>
+          nobody's checked in there right now.
+        </div>
+      )}
+
+      {filtered.length === 0 && groups.length === 0 && !query.trim() && (
+        <div style={{ padding: "40px 4px", textAlign: "center", color: colors.textMuted, fontSize: 13, lineHeight: 1.5 }}>
+          nobody's checked in yet. be the first — tap "check in" below.
+        </div>
+      )}
+
+      {osmResults.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontFamily: monoFont, fontSize: 10, letterSpacing: "0.08em", color: colors.textMuted, textTransform: "uppercase", marginBottom: 8 }}>
+            nobody's there yet — be the first
+          </div>
+          {osmResults.map((r) => (
+            <div
+              key={r.place_id}
+              style={{
+                background: colors.surface,
+                border: `1px solid ${colors.line}`,
+                borderRadius: 12,
+                padding: 12,
+                marginBottom: 8,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
+              <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.text, flex: 1 }}>
+                {r.display_name.split(",")[0]}
+              </div>
+              <Button onClick={() => onStartCheckinAt(r.display_name.split(",")[0])} style={{ padding: "7px 12px", fontSize: 11.5 }}>
+                check in
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ paddingBottom: 20 }}>
+        {filtered.map((g) => (
+          <VenueCard key={g.venue.id} group={g} myName={myName} onCheckOut={onCheckOut} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -348,7 +500,8 @@ export default function App() {
   const [settingUp, setSettingUp] = useState(false);
   const [error, setError] = useState(null);
   const [view, setView] = useState("feed");
-  const [stats, setStats] = useState({ checkinCount: 0, venueCount: 0 });
+  const [stats, setStats] = useState({ checkinCount: 0, venueCount: 0, friendCount: 0 });
+  const [prefillVenue, setPrefillVenue] = useState("");
 
   useEffect(() => {
     const init = async () => {
@@ -392,7 +545,11 @@ export default function App() {
     const { data: mine } = await supabase.from("checkins").select("venue_id").eq("user_id", session.user.id);
     const list = mine || [];
     const distinctVenues = new Set(list.map((c) => c.venue_id));
-    setStats({ checkinCount: list.length, venueCount: distinctVenues.size });
+    const { count: friendCount } = await supabase
+      .from("friendships")
+      .select("*", { count: "exact", head: true })
+      .or(`user_id_a.eq.${session.user.id},user_id_b.eq.${session.user.id}`);
+    setStats({ checkinCount: list.length, venueCount: distinctVenues.size, friendCount: friendCount || 0 });
   }, [session]);
 
   useEffect(() => {
@@ -420,6 +577,17 @@ export default function App() {
       setError("Couldn't save your name.");
     } finally {
       setSettingUp(false);
+    }
+
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const inviterId = params.get("invite");
+      if (inviterId && inviterId !== session.user.id) {
+        await supabase.from("friendships").insert({ user_id_a: session.user.id, user_id_b: inviterId });
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+    } catch (e) {
+      // Non-fatal — a duplicate/failed friendship shouldn't block onboarding
     }
   };
 
@@ -454,6 +622,7 @@ export default function App() {
       });
       if (checkinErr) throw checkinErr;
       setView("feed");
+      setPrefillVenue("");
       loadData();
       loadStats();
     } catch (e) {
@@ -503,23 +672,27 @@ export default function App() {
 
             <div style={{ flex: 1, overflowY: "auto", padding: "0 20px" }}>
               {view === "checkin" ? (
-                <CheckInForm onCreate={checkIn} onCancel={() => setView("feed")} />
+                <CheckInForm
+                  onCreate={checkIn}
+                  onCancel={() => { setPrefillVenue(""); setView("feed"); }}
+                  initialVenueQuery={prefillVenue}
+                />
               ) : view === "you" ? (
-                <BadgesScreen stats={stats} />
-              ) : groups.length === 0 ? (
-                <div style={{ padding: "40px 4px", textAlign: "center", color: colors.textMuted, fontSize: 13, lineHeight: 1.5 }}>
-                  nobody's checked in yet. be the first — tap "check in" below.
-                </div>
+                <BadgesScreen stats={stats} myId={session.user.id} />
               ) : (
-                <div style={{ paddingBottom: 20 }}>
-                  {groups.map((g) => (
-                    <VenueCard key={g.venue.id} group={g} myName={profile.name} onCheckOut={checkOut} />
-                  ))}
-                </div>
+                <FeedScreen
+                  groups={groups}
+                  myName={profile.name}
+                  onCheckOut={checkOut}
+                  onStartCheckinAt={(name) => { setPrefillVenue(name); setView("checkin"); }}
+                />
               )}
             </div>
 
-            <BottomNav view={view} setView={setView} />
+            <BottomNav
+              view={view}
+              onNavigate={(id) => { if (id === "checkin") setPrefillVenue(""); setView(id); }}
+            />
           </>
         )}
       </div>
