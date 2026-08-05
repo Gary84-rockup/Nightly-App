@@ -272,7 +272,7 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
   );
 }
 
-function VenueCard({ group, myName, onCheckOut, onCheckInHere, defaultExpanded, isFavorite, onToggleFavorite }) {
+function VenueCard({ group, myName, onCheckOut, onCheckInHere, defaultExpanded, isFavorite, onToggleFavorite, friendIds }) {
   const [expanded, setExpanded] = useState(!!defaultExpanded);
   const vibeCounts = {};
   group.checkins.forEach((c) => { vibeCounts[c.vibe] = (vibeCounts[c.vibe] || 0) + 1; });
@@ -340,15 +340,38 @@ function VenueCard({ group, myName, onCheckOut, onCheckInHere, defaultExpanded, 
         </div>
         <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted }}>{expanded ? "▲" : "▼"}</div>
       </div>
+      {friendIds && group.checkins.some((c) => friendIds.has(c.user_id)) && (
+        <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: "#FFC24B", fontWeight: 700, marginTop: 4 }}>
+          👋 {group.checkins.filter((c) => friendIds.has(c.user_id)).length} of them {group.checkins.filter((c) => friendIds.has(c.user_id)).length === 1 ? "is" : "are"} your friend
+          {group.checkins.filter((c) => friendIds.has(c.user_id)).length === 1 ? "" : "s"}
+        </div>
+      )}
 
       {expanded && (
         <div style={{ marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
-          {group.checkins.map((c) => (
-            <div key={c.id} style={{ fontFamily: bodyFont, fontSize: 12, color: colors.text, marginBottom: 4, fontWeight: 500 }}>
-              <span style={{ color: VIBES[c.vibe].color }}>{VIBES[c.vibe].emoji}</span> {c.user_name}
-              {c.note ? <span style={{ color: colors.textMuted }}> — "{c.note}"</span> : null}
-            </div>
-          ))}
+          {group.checkins.map((c) => {
+            const isFriend = friendIds && friendIds.has(c.user_id);
+            return (
+              <div
+                key={c.id}
+                style={{
+                  fontFamily: bodyFont,
+                  fontSize: 12,
+                  color: colors.text,
+                  marginBottom: 4,
+                  fontWeight: isFriend ? 700 : 500,
+                  background: isFriend ? "#FFC24B22" : "transparent",
+                  borderRadius: 6,
+                  padding: isFriend ? "3px 6px" : 0,
+                }}
+              >
+                {isFriend && <span style={{ marginRight: 4 }}>👋</span>}
+                <span style={{ color: VIBES[c.vibe].color }}>{VIBES[c.vibe].emoji}</span> {c.user_name}
+                {isFriend && <span style={{ color: "#FFC24B", fontSize: 10, marginLeft: 4 }}>· friend</span>}
+                {c.note ? <span style={{ color: colors.textMuted }}> — "{c.note}"</span> : null}
+              </div>
+            );
+          })}
           {group.venue.osm_website && (
             <a href={group.venue.osm_website} target="_blank" rel="noopener noreferrer" style={{ fontFamily: bodyFont, fontSize: 11, color: "#34E4EA", textDecoration: "underline", fontWeight: 600 }}>
               🌐 venue website
@@ -563,8 +586,10 @@ function CrewScreen({ crews, checkins, tonightCrew, setTonightCrew, onCreateCrew
   );
 }
 
-function BadgesScreen({ stats, myId }) {
+function BadgesScreen({ stats, myId, friends, onSearchProfiles, onAddFriend, onRemoveFriend }) {
   const [copied, setCopied] = useState(false);
+  const [friendQuery, setFriendQuery] = useState("");
+  const [friendResults, setFriendResults] = useState([]);
   const unlocked = BADGES.filter((b) => b.need(stats));
   const locked = BADGES.filter((b) => !b.need(stats));
 
@@ -583,6 +608,15 @@ function BadgesScreen({ stats, myId }) {
       setTimeout(() => setCopied(false), 2000);
     }
   };
+
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      const results = await onSearchProfiles(friendQuery);
+      const friendIds = new Set(friends.map((f) => f.id));
+      setFriendResults(results.filter((r) => !friendIds.has(r.id)));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [friendQuery, friends, onSearchProfiles]);
 
   return (
     <div style={{ padding: "20px 0 20px" }}>
@@ -605,6 +639,62 @@ function BadgesScreen({ stats, myId }) {
           {copied ? "link copied ✓" : "share my invite link"}
         </Button>
       </div>
+
+      <div style={{ fontFamily: monoFont, fontSize: 10, letterSpacing: "0.08em", color: colors.textMuted, textTransform: "uppercase", marginBottom: 8 }}>
+        my friends
+      </div>
+      <div style={{ position: "relative", marginBottom: 10 }}>
+        <input
+          value={friendQuery}
+          onChange={(e) => setFriendQuery(e.target.value)}
+          placeholder="add a friend by name..."
+          style={{
+            width: "100%",
+            padding: "10px 12px",
+            borderRadius: 10,
+            border: `1px solid ${colors.line}`,
+            background: colors.surface,
+            color: colors.text,
+            fontFamily: bodyFont,
+            fontSize: 13,
+            boxSizing: "border-box",
+          }}
+        />
+        {friendResults.length > 0 && (
+          <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10, background: colors.surfaceRaised, border: `1px solid ${colors.line}`, borderRadius: 9, marginTop: 4, overflow: "hidden" }}>
+            {friendResults.map((r) => (
+              <div
+                key={r.id}
+                onClick={() => { onAddFriend(r.id); setFriendQuery(""); setFriendResults([]); }}
+                style={{ padding: "9px 12px", fontSize: 12.5, color: colors.text, cursor: "pointer", borderBottom: `1px solid ${colors.line}`, display: "flex", justifyContent: "space-between" }}
+              >
+                <span>{r.name}</span>
+                <span style={{ color: "#FF3D9A", fontWeight: 700 }}>+ add</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {friends.length === 0 ? (
+        <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 20 }}>
+          no friends added yet — search a name above, or share your invite link.
+        </div>
+      ) : (
+        <div style={{ marginBottom: 20 }}>
+          {friends.map((f) => (
+            <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderBottom: `1px solid ${colors.line}` }}>
+              <span style={{ fontFamily: bodyFont, fontSize: 13, color: colors.text, fontWeight: 600 }}>👋 {f.name}</span>
+              <button
+                onClick={() => onRemoveFriend(f.id)}
+                style={{ background: "none", border: "none", color: colors.textMuted, fontFamily: monoFont, fontSize: 10, cursor: "pointer" }}
+              >
+                remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
         <div style={{ flex: 1, background: colors.surface, borderRadius: 14, padding: 14, textAlign: "center" }}>
@@ -772,7 +862,7 @@ function DanceEventsPanel() {
   );
 }
 
-function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, myName, onCheckOut, onCheckInHere, onStartCheckinAt }) {
+function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, myName, onCheckOut, onCheckInHere, onStartCheckinAt }) {
   const [query, setQuery] = useState("");
   const [osmResults, setOsmResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -893,6 +983,7 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, myName, onC
               onCheckInHere={onCheckInHere}
               isFavorite={true}
               onToggleFavorite={onToggleFavorite}
+              friendIds={friendIds}
             />
           ))}
         </div>
@@ -1031,6 +1122,7 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, myName, onC
             onCheckInHere={onCheckInHere}
             isFavorite={false}
             onToggleFavorite={onToggleFavorite}
+            friendIds={friendIds}
           />
         ))}
       </div>
@@ -1045,6 +1137,7 @@ export default function App() {
   const [venues, setVenues] = useState({});
   const [favoriteIds, setFavoriteIds] = useState(new Set());
   const [crews, setCrews] = useState([]);
+  const [friends, setFriends] = useState([]);
   const [tonightCrew, setTonightCrew] = useState(null);
   const [loading, setLoading] = useState(true);
   const [settingUp, setSettingUp] = useState(false);
@@ -1131,6 +1224,22 @@ export default function App() {
     setCrews(crewData || []);
   }, [session]);
 
+  const loadFriends = useCallback(async () => {
+    if (!session) return;
+    const myId = session.user.id;
+    const { data: rows } = await supabase
+      .from("friendships")
+      .select("user_id_a, user_id_b")
+      .or(`user_id_a.eq.${myId},user_id_b.eq.${myId}`);
+    const friendIds = (rows || []).map((r) => (r.user_id_a === myId ? r.user_id_b : r.user_id_a));
+    if (friendIds.length === 0) {
+      setFriends([]);
+      return;
+    }
+    const { data: profileRows } = await supabase.from("profiles").select("id, name").in("id", friendIds);
+    setFriends(profileRows || []);
+  }, [session]);
+
   const loadStats = useCallback(async () => {
     if (!session) return;
     const { data: mine } = await supabase.from("checkins").select("venue_id").eq("user_id", session.user.id);
@@ -1144,7 +1253,7 @@ export default function App() {
   }, [session]);
 
   useEffect(() => {
-    if (session) { loadData(); loadStats(); loadFavorites(); loadCrews(); }
+    if (session) { loadData(); loadStats(); loadFavorites(); loadCrews(); loadFriends(); }
   }, [session, loadData]);
 
   const toggleFavorite = async (venueId) => {
@@ -1180,6 +1289,39 @@ export default function App() {
     await supabase.from("crew_members").delete().eq("crew_id", crewId).eq("user_id", session.user.id);
     if (tonightCrew && tonightCrew.id === crewId) setTonightCrew(null);
     loadCrews();
+  };
+
+  const searchProfiles = async (query) => {
+    if (!query || query.trim().length < 2) return [];
+    const { data } = await supabase
+      .from("profiles")
+      .select("id, name")
+      .ilike("name", `%${query.trim()}%`)
+      .neq("id", session.user.id)
+      .limit(8);
+    return data || [];
+  };
+
+  const addFriend = async (friendId) => {
+    try {
+      await supabase.from("friendships").insert({ user_id_a: session.user.id, user_id_b: friendId });
+      loadFriends();
+      loadStats();
+    } catch (e) {
+      // Likely already friends — safe to ignore
+    }
+  };
+
+  const removeFriend = async (friendId) => {
+    const myId = session.user.id;
+    await supabase
+      .from("friendships")
+      .delete()
+      .or(
+        `and(user_id_a.eq.${myId},user_id_b.eq.${friendId}),and(user_id_a.eq.${friendId},user_id_b.eq.${myId})`
+      );
+    loadFriends();
+    loadStats();
   };
 
   useEffect(() => {
@@ -1324,13 +1466,21 @@ export default function App() {
                   myId={session.user.id}
                 />
               ) : view === "you" ? (
-                <BadgesScreen stats={stats} myId={session.user.id} />
+                <BadgesScreen
+                  stats={stats}
+                  myId={session.user.id}
+                  friends={friends}
+                  onSearchProfiles={searchProfiles}
+                  onAddFriend={addFriend}
+                  onRemoveFriend={removeFriend}
+                />
               ) : (
                 <FeedScreen
                   groups={groups}
                   venues={venues}
                   favoriteIds={favoriteIds}
                   onToggleFavorite={toggleFavorite}
+                  friendIds={new Set(friends.map((f) => f.id))}
                   myName={profile.name}
                   onCheckOut={checkOut}
                   onStartCheckinAt={(name) => { setPrefillVenue(name); setPresetVenue(null); setView("checkin"); }}
