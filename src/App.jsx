@@ -12,11 +12,19 @@ const colors = {
 };
 
 const VIBES = {
-  chill: { label: "Chill", color: "#34E4EA", emoji: "🌙" },
-  busy: { label: "Busy", color: "#FFC24B", emoji: "🔥" },
-  lit: { label: "Lit", color: "#FF3D9A", emoji: "⚡" },
-  dead: { label: "Dead", color: "#6B5F82", emoji: "💤" },
+  chill: { label: "Chill", color: "#34E4EA", emoji: "🌙", gradient: "linear-gradient(135deg, #14282e, #1A1226)" },
+  busy: { label: "Busy", color: "#FFC24B", emoji: "🔥", gradient: "linear-gradient(135deg, #2e2414, #1A1226)" },
+  lit: { label: "Lit", color: "#FF3D9A", emoji: "⚡", gradient: "linear-gradient(135deg, #2e1424, #1A1226)" },
+  dead: { label: "Dead", color: "#6B5F82", emoji: "💤", gradient: "linear-gradient(135deg, #1A1226, #1A1226)" },
 };
+
+const BADGES = [
+  { id: "first", label: "First Night Out", emoji: "🌟", need: (s) => s.checkinCount >= 1, desc: "Check in once" },
+  { id: "regular", label: "Regular", emoji: "🍹", need: (s) => s.checkinCount >= 5, desc: "5 check-ins" },
+  { id: "legend", label: "Nightly Legend", emoji: "👑", need: (s) => s.checkinCount >= 15, desc: "15 check-ins" },
+  { id: "explorer", label: "Explorer", emoji: "🗺️", need: (s) => s.venueCount >= 3, desc: "3 different venues" },
+  { id: "nightowl", label: "Night Owl", emoji: "🦉", need: (s) => s.venueCount >= 8, desc: "8 different venues" },
+];
 
 const displayFont = "'Space Grotesk', sans-serif";
 const bodyFont = "'Inter', sans-serif";
@@ -193,33 +201,139 @@ function VenueCard({ group, myName, onCheckOut }) {
   const mine = group.checkins.find((c) => c.user_name === myName);
 
   return (
-    <div style={{ background: colors.surface, border: `1px solid ${colors.line}`, borderLeft: `3px solid ${v.color}`, borderRadius: 12, padding: 14, marginBottom: 12 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-        <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 15, color: colors.text }}>{group.venue.name}</div>
-        <span style={{ fontFamily: monoFont, fontSize: 10, color: v.color, border: `1px solid ${v.color}`, borderRadius: 20, padding: "2px 8px" }}>
-          {v.emoji} {v.label}
+    <div
+      style={{
+        background: v.gradient,
+        border: `1px solid ${v.color}44`,
+        borderRadius: 18,
+        padding: 16,
+        marginBottom: 14,
+        boxShadow: `0 0 24px -8px ${v.color}66`,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+        <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 17, color: colors.text }}>{group.venue.name}</div>
+        <span
+          style={{
+            fontFamily: monoFont,
+            fontSize: 10,
+            fontWeight: 700,
+            color: colors.bg,
+            background: v.color,
+            borderRadius: 20,
+            padding: "3px 10px",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {v.emoji} {v.label.toUpperCase()}
         </span>
       </div>
-      <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 8 }}>
-        {group.checkins.length} {group.checkins.length === 1 ? "person" : "people"} checked in
+      <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.textMuted, marginBottom: 10, fontWeight: 600 }}>
+        🎉 {group.checkins.length} {group.checkins.length === 1 ? "person" : "people"} here right now
       </div>
       {group.checkins.slice(0, 4).map((c) => (
-        <div key={c.id} style={{ fontFamily: bodyFont, fontSize: 11.5, color: colors.text, marginBottom: 3 }}>
+        <div key={c.id} style={{ fontFamily: bodyFont, fontSize: 12, color: colors.text, marginBottom: 4, fontWeight: 500 }}>
           <span style={{ color: VIBES[c.vibe].color }}>{VIBES[c.vibe].emoji}</span> {c.user_name}
           {c.note ? <span style={{ color: colors.textMuted }}> — "{c.note}"</span> : null}
         </div>
       ))}
       {group.venue.osm_website && (
-        <a href={group.venue.osm_website} target="_blank" rel="noopener noreferrer" style={{ fontFamily: bodyFont, fontSize: 11, color: "#34E4EA", textDecoration: "underline" }}>
+        <a href={group.venue.osm_website} target="_blank" rel="noopener noreferrer" style={{ fontFamily: bodyFont, fontSize: 11, color: "#34E4EA", textDecoration: "underline", fontWeight: 600 }}>
           🌐 venue website
         </a>
       )}
       {mine && (
-        <div style={{ marginTop: 8 }}>
+        <div style={{ marginTop: 10 }}>
           <Button variant="danger" onClick={() => onCheckOut(mine.id)} style={{ padding: "7px 12px", fontSize: 11.5 }}>
             check out
           </Button>
         </div>
+      )}
+    </div>
+  );
+}
+
+function BottomNav({ view, setView }) {
+  const items = [
+    { id: "feed", label: "Feed", emoji: "🌆" },
+    { id: "checkin", label: "Check in", emoji: "➕" },
+    { id: "you", label: "You", emoji: "🏆" },
+  ];
+  return (
+    <div style={{ display: "flex", borderTop: `1px solid ${colors.line}`, background: colors.surface }}>
+      {items.map((it) => (
+        <button
+          key={it.id}
+          onClick={() => setView(it.id)}
+          style={{
+            flex: 1,
+            padding: "12px 0 14px",
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            fontFamily: bodyFont,
+            fontSize: 11,
+            fontWeight: 700,
+            color: view === it.id ? "#FF3D9A" : colors.textMuted,
+          }}
+        >
+          <div style={{ fontSize: 16, marginBottom: 2 }}>{it.emoji}</div>
+          {it.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function BadgesScreen({ stats }) {
+  const unlocked = BADGES.filter((b) => b.need(stats));
+  const locked = BADGES.filter((b) => !b.need(stats));
+  return (
+    <div style={{ padding: "20px 0 20px" }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+        <div style={{ flex: 1, background: colors.surface, borderRadius: 14, padding: 14, textAlign: "center" }}>
+          <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 24, color: "#FF3D9A" }}>{stats.checkinCount}</div>
+          <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: colors.textMuted, fontWeight: 600 }}>check-ins</div>
+        </div>
+        <div style={{ flex: 1, background: colors.surface, borderRadius: 14, padding: 14, textAlign: "center" }}>
+          <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 24, color: "#34E4EA" }}>{stats.venueCount}</div>
+          <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: colors.textMuted, fontWeight: 600 }}>venues</div>
+        </div>
+      </div>
+
+      <div style={{ fontFamily: monoFont, fontSize: 10, letterSpacing: "0.08em", color: colors.textMuted, textTransform: "uppercase", marginBottom: 10 }}>
+        badges earned
+      </div>
+      {unlocked.length === 0 && (
+        <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.textMuted, marginBottom: 16 }}>
+          none yet — check in somewhere to start earning badges 🎉
+        </div>
+      )}
+      {unlocked.map((b) => (
+        <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "linear-gradient(135deg, #2e1424, #1A1226)", border: "1px solid #FF3D9A66", borderRadius: 14, padding: 12, marginBottom: 8, boxShadow: "0 0 20px -8px #FF3D9A66" }}>
+          <div style={{ fontSize: 26 }}>{b.emoji}</div>
+          <div>
+            <div style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 13.5, color: colors.text }}>{b.label}</div>
+            <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted }}>{b.desc}</div>
+          </div>
+        </div>
+      ))}
+
+      {locked.length > 0 && (
+        <>
+          <div style={{ fontFamily: monoFont, fontSize: 10, letterSpacing: "0.08em", color: colors.textMuted, textTransform: "uppercase", margin: "16px 0 10px" }}>
+            still locked
+          </div>
+          {locked.map((b) => (
+            <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 12, background: colors.surface, border: `1px solid ${colors.line}`, borderRadius: 14, padding: 12, marginBottom: 8, opacity: 0.6 }}>
+              <div style={{ fontSize: 26, filter: "grayscale(1)" }}>{b.emoji}</div>
+              <div>
+                <div style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 13.5, color: colors.text }}>{b.label}</div>
+                <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted }}>{b.desc}</div>
+              </div>
+            </div>
+          ))}
+        </>
       )}
     </div>
   );
@@ -234,6 +348,7 @@ export default function App() {
   const [settingUp, setSettingUp] = useState(false);
   const [error, setError] = useState(null);
   const [view, setView] = useState("feed");
+  const [stats, setStats] = useState({ checkinCount: 0, venueCount: 0 });
 
   useEffect(() => {
     const init = async () => {
@@ -272,8 +387,16 @@ export default function App() {
     setCheckins(checkinData || []);
   }, []);
 
+  const loadStats = useCallback(async () => {
+    if (!session) return;
+    const { data: mine } = await supabase.from("checkins").select("venue_id").eq("user_id", session.user.id);
+    const list = mine || [];
+    const distinctVenues = new Set(list.map((c) => c.venue_id));
+    setStats({ checkinCount: list.length, venueCount: distinctVenues.size });
+  }, [session]);
+
   useEffect(() => {
-    if (session) loadData();
+    if (session) { loadData(); loadStats(); }
   }, [session, loadData]);
 
   useEffect(() => {
@@ -332,6 +455,7 @@ export default function App() {
       if (checkinErr) throw checkinErr;
       setView("feed");
       loadData();
+      loadStats();
     } catch (e) {
       setError("Couldn't check in — try again.");
     }
@@ -340,7 +464,7 @@ export default function App() {
   const checkOut = async (checkinId) => {
     const { error: delErr } = await supabase.from("checkins").delete().eq("id", checkinId);
     if (delErr) setError("Couldn't check out — try again.");
-    else loadData();
+    else { loadData(); loadStats(); }
   };
 
   const grouped = {};
@@ -380,6 +504,8 @@ export default function App() {
             <div style={{ flex: 1, overflowY: "auto", padding: "0 20px" }}>
               {view === "checkin" ? (
                 <CheckInForm onCreate={checkIn} onCancel={() => setView("feed")} />
+              ) : view === "you" ? (
+                <BadgesScreen stats={stats} />
               ) : groups.length === 0 ? (
                 <div style={{ padding: "40px 4px", textAlign: "center", color: colors.textMuted, fontSize: 13, lineHeight: 1.5 }}>
                   nobody's checked in yet. be the first — tap "check in" below.
@@ -393,11 +519,7 @@ export default function App() {
               )}
             </div>
 
-            {view !== "checkin" && (
-              <div style={{ padding: "12px 20px 18px", borderTop: `1px solid ${colors.line}` }}>
-                <Button onClick={() => setView("checkin")} style={{ width: "100%" }}>check in</Button>
-              </div>
-            )}
+            <BottomNav view={view} setView={setView} />
           </>
         )}
       </div>
