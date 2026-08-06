@@ -67,10 +67,31 @@ function useGeolocation() {
       return;
     }
     setState((s) => ({ ...s, status: "loading" }));
+
+    const onSuccess = (pos) => setState({ status: "granted", coords: { lat: pos.coords.latitude, lng: pos.coords.longitude } });
+
+    // A GPS fix indoors or on a cold start can easily exceed a short timeout even with
+    // permission granted — that's not the same as being denied, so retry once using
+    // network/wifi-based location (faster, coarser, but far more reliable indoors)
+    // before telling the user location isn't available.
+    const tryLowAccuracy = () => {
+      navigator.geolocation.getCurrentPosition(
+        onSuccess,
+        (err) => setState({ status: err.code === 1 ? "denied" : "unavailable", coords: null }),
+        { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+      );
+    };
+
     navigator.geolocation.getCurrentPosition(
-      (pos) => setState({ status: "granted", coords: { lat: pos.coords.latitude, lng: pos.coords.longitude } }),
-      () => setState({ status: "denied", coords: null }),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      onSuccess,
+      (err) => {
+        if (err.code === 1) {
+          setState({ status: "denied", coords: null }); // permission actually denied — retrying won't help
+        } else {
+          tryLowAccuracy();
+        }
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
     );
   }, []);
 
@@ -266,14 +287,30 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
         <>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
             <span style={{ fontFamily: monoFont, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: colors.textMuted }}>
-              📍 {geo.status === "loading" ? "finding you…" : geo.status === "granted" ? "near you" : "location off"}
+              📍{" "}
+              {geo.status === "loading"
+                ? "finding you…"
+                : geo.status === "granted"
+                ? "near you"
+                : geo.status === "denied"
+                ? "location blocked for this site"
+                : geo.status === "unavailable"
+                ? "couldn't get a location fix"
+                : geo.status === "unsupported"
+                ? "location not supported on this browser"
+                : "location off"}
             </span>
-            {(geo.status === "denied" || geo.status === "unsupported" || geo.status === "idle") && (
+            {(geo.status === "denied" || geo.status === "unavailable" || geo.status === "unsupported" || geo.status === "idle") && (
               <button onClick={geo.request} style={{ background: "none", border: "none", color: "#34E4EA", fontSize: 10.5, fontFamily: bodyFont, cursor: "pointer", fontWeight: 700, padding: 0 }}>
-                turn on location
+                {geo.status === "denied" ? "check browser settings" : "retry"}
               </button>
             )}
           </div>
+          {geo.status === "denied" && (
+            <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted, marginBottom: 10, lineHeight: 1.4 }}>
+              your browser has location blocked for this site — enable it in your browser's site settings (often the 🔒 or ⓘ icon next to the address bar), then tap retry.
+            </div>
+          )}
 
           {geo.status === "granted" && nearbyStatus === "loading" && (
             <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 12 }}>looking for nearby spots…</div>
