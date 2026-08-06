@@ -19,13 +19,19 @@ const VIBES = {
 };
 
 const BADGES = [
-  { id: "first", label: "First Night Out", emoji: "🌟", need: (s) => s.checkinCount >= 1, desc: "Check in once" },
-  { id: "regular", label: "Regular", emoji: "🍹", need: (s) => s.checkinCount >= 5, desc: "5 check-ins" },
-  { id: "legend", label: "Nightly Legend", emoji: "👑", need: (s) => s.checkinCount >= 15, desc: "15 check-ins" },
-  { id: "explorer", label: "Explorer", emoji: "🗺️", need: (s) => s.venueCount >= 3, desc: "3 different venues" },
-  { id: "nightowl", label: "Night Owl", emoji: "🦉", need: (s) => s.venueCount >= 8, desc: "8 different venues" },
-  { id: "connector", label: "Connector", emoji: "🤝", need: (s) => s.friendCount >= 3, desc: "3 friends on NIGHTLY" },
+  { id: "first", label: "First Night Out", emoji: "🌟", statKey: "checkinCount", target: 1, desc: "Check in once" },
+  { id: "regular", label: "Regular", emoji: "🍹", statKey: "checkinCount", target: 5, desc: "5 check-ins" },
+  { id: "legend", label: "Nightly Legend", emoji: "👑", statKey: "checkinCount", target: 15, desc: "15 check-ins" },
+  { id: "explorer", label: "Explorer", emoji: "🗺️", statKey: "venueCount", target: 3, desc: "3 different venues" },
+  { id: "nightowl", label: "Night Owl", emoji: "🦉", statKey: "venueCount", target: 8, desc: "8 different venues" },
+  { id: "connector", label: "Connector", emoji: "🤝", statKey: "friendCount", target: 3, desc: "3 friends on NIGHTLY" },
 ];
+
+const STAT_NOUNS = { checkinCount: "check-in", venueCount: "venue", friendCount: "friend" };
+function statNoun(statKey, count) {
+  const word = STAT_NOUNS[statKey] || "";
+  return count === 1 ? word : `${word}s`;
+}
 
 const displayFont = "'Space Grotesk', sans-serif";
 const bodyFont = "'Inter', sans-serif";
@@ -907,8 +913,12 @@ function BadgesScreen({ stats, myId, friends, onSearchProfiles, onAddFriend, onR
   const [copied, setCopied] = useState(false);
   const [friendQuery, setFriendQuery] = useState("");
   const [friendResults, setFriendResults] = useState([]);
-  const unlocked = BADGES.filter((b) => b.need(stats));
-  const locked = BADGES.filter((b) => !b.need(stats));
+  const unlocked = BADGES.filter((b) => stats[b.statKey] >= b.target);
+  const locked = BADGES.filter((b) => stats[b.statKey] < b.target);
+  const nextBadge = locked.reduce(
+    (best, b) => (best == null || stats[b.statKey] / b.target > stats[best.statKey] / best.target ? b : best),
+    null
+  );
 
   const inviteLink = `${window.location.origin}${window.location.pathname}?invite=${myId}`;
 
@@ -1027,6 +1037,33 @@ function BadgesScreen({ stats, myId, friends, onSearchProfiles, onAddFriend, onR
         </div>
       </div>
 
+      {nextBadge && (
+        <div style={{ background: "linear-gradient(135deg, #2e1424, #14282e)", border: "1px solid #FF3D9A44", borderRadius: 14, padding: 14, marginBottom: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <span style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 13, color: colors.text }}>
+              {nextBadge.emoji} next up: {nextBadge.label}
+            </span>
+            <span style={{ fontFamily: monoFont, fontSize: 11, color: "#FF3D9A", fontWeight: 700 }}>
+              {stats[nextBadge.statKey]}/{nextBadge.target}
+            </span>
+          </div>
+          <div style={{ height: 8, borderRadius: 6, background: colors.bg, overflow: "hidden" }}>
+            <div
+              style={{
+                height: "100%",
+                width: `${Math.min(100, (stats[nextBadge.statKey] / nextBadge.target) * 100)}%`,
+                background: "linear-gradient(90deg, #FF3D9A, #7C4DFF)",
+                borderRadius: 6,
+                transition: "width 0.4s ease",
+              }}
+            />
+          </div>
+          <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted, marginTop: 6 }}>
+            {nextBadge.target - stats[nextBadge.statKey]} more {statNoun(nextBadge.statKey, nextBadge.target - stats[nextBadge.statKey])} to unlock
+          </div>
+        </div>
+      )}
+
       <div style={{ fontFamily: monoFont, fontSize: 10, letterSpacing: "0.08em", color: colors.textMuted, textTransform: "uppercase", marginBottom: 10 }}>
         badges earned
       </div>
@@ -1053,9 +1090,23 @@ function BadgesScreen({ stats, myId, friends, onSearchProfiles, onAddFriend, onR
           {locked.map((b) => (
             <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 12, background: colors.surface, border: `1px solid ${colors.line}`, borderRadius: 14, padding: 12, marginBottom: 8, opacity: 0.6 }}>
               <div style={{ fontSize: 26, filter: "grayscale(1)" }}>{b.emoji}</div>
-              <div>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 13.5, color: colors.text }}>{b.label}</div>
-                <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted }}>{b.desc}</div>
+                <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted, marginBottom: 6 }}>{b.desc}</div>
+                <div style={{ height: 5, borderRadius: 4, background: colors.bg, overflow: "hidden" }}>
+                  <div
+                    style={{
+                      height: "100%",
+                      width: `${Math.min(100, (stats[b.statKey] / b.target) * 100)}%`,
+                      background: colors.textMuted,
+                      borderRadius: 4,
+                      transition: "width 0.4s ease",
+                    }}
+                  />
+                </div>
+                <div style={{ fontFamily: monoFont, fontSize: 9.5, color: colors.textMuted, marginTop: 3 }}>
+                  {stats[b.statKey]}/{b.target}
+                </div>
               </div>
             </div>
           ))}
