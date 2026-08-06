@@ -31,18 +31,6 @@ const displayFont = "'Space Grotesk', sans-serif";
 const bodyFont = "'Inter', sans-serif";
 const monoFont = "'IBM Plex Mono', monospace";
 
-function eventDateLabel(dateStr) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const target = new Date(dateStr + "T00:00:00");
-  const diffDays = Math.round((target - today) / (1000 * 60 * 60 * 24));
-  if (diffDays === 0) return "Tonight";
-  if (diffDays === 1) return "Tomorrow";
-  if (diffDays < 0) return "Past";
-  if (diffDays <= 6) return `In ${diffDays} days`;
-  return target.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
-}
-
 function isOpenLate(hours) {
   if (!hours) return false;
   if (hours.includes("24/7")) return true;
@@ -959,119 +947,6 @@ function BadgesScreen({ stats, myId, friends, onSearchProfiles, onAddFriend, onR
   );
 }
 
-function DanceEventsPanel() {
-  const [open, setOpen] = useState(false);
-  const [city, setCity] = useState("London");
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const apiKey = import.meta.env.VITE_TICKETMASTER_API_KEY;
-
-  const search = async () => {
-    if (!apiKey) {
-      setError("No Ticketmaster API key set — add VITE_TICKETMASTER_API_KEY to your .env");
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(
-        `https://app.ticketmaster.com/discovery/v2/events.json?classificationName=dance&city=${encodeURIComponent(
-          city
-        )}&size=6&sort=date,asc&apikey=${apiKey}`
-      );
-      const data = await res.json();
-      setEvents((data._embedded && data._embedded.events) || []);
-      if (!data._embedded) setError("Nothing found for that city.");
-    } catch (e) {
-      setError("Couldn't reach Ticketmaster — try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div
-      style={{
-        background: colors.surface,
-        border: `1px solid ${colors.line}`,
-        borderRadius: 14,
-        padding: 12,
-        marginBottom: 16,
-      }}
-    >
-      <button
-        onClick={() => setOpen((o) => !o)}
-        style={{
-          width: "100%",
-          background: "none",
-          border: "none",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          cursor: "pointer",
-          padding: 0,
-        }}
-      >
-        <span style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 13, color: colors.text }}>
-          🎵 dance events nearby
-        </span>
-        <span style={{ color: colors.textMuted, fontSize: 11 }}>{open ? "▲" : "▼"}</span>
-      </button>
-
-      {open && (
-        <div style={{ marginTop: 12 }}>
-          <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-            <input
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              placeholder="City"
-              style={{
-                flex: 1,
-                padding: "8px 10px",
-                borderRadius: 8,
-                border: `1px solid ${colors.line}`,
-                background: colors.bg,
-                color: colors.text,
-                fontFamily: bodyFont,
-                fontSize: 12.5,
-              }}
-            />
-            <Button onClick={search} style={{ padding: "8px 14px", fontSize: 11.5 }}>
-              {loading ? "..." : "search"}
-            </Button>
-          </div>
-
-          {error && <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: colors.textMuted, marginBottom: 8 }}>{error}</div>}
-
-          {events.map((ev) => (
-            <a
-              key={ev.id}
-              href={ev.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: "block",
-                padding: "8px 10px",
-                borderRadius: 9,
-                background: colors.surfaceRaised,
-                marginBottom: 6,
-                textDecoration: "none",
-              }}
-            >
-              <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.text, fontWeight: 600 }}>{ev.name}</div>
-              <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted }}>
-                {ev._embedded && ev._embedded.venues && ev._embedded.venues[0] ? ev._embedded.venues[0].name : ""}
-                {ev.dates && ev.dates.start ? ` · ${ev.dates.start.localDate}` : ""}
-              </div>
-            </a>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, crews, onCallCrew, crewCalls, myName, myId, onCheckOut, onCheckInHere, onStartCheckinAt }) {
   const [query, setQuery] = useState("");
   const [osmResults, setOsmResults] = useState([]);
@@ -1172,8 +1047,6 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
           })}
         </div>
       )}
-
-      <DanceEventsPanel />
 
       {groups.length > 0 && (
         <Button
