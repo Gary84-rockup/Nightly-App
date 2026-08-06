@@ -677,6 +677,7 @@ function BottomNav({ view, onNavigate }) {
     { id: "feed", label: "Feed", emoji: "🌆" },
     { id: "checkin", label: "Check in", emoji: "➕" },
     { id: "crew", label: "Crew", emoji: "👥" },
+    { id: "friends", label: "Friends", emoji: "👋" },
     { id: "you", label: "You", emoji: "🏆" },
   ];
   return (
@@ -909,16 +910,10 @@ function CrewScreen({ crews, checkins, tonightCrew, setTonightCrew, onCreateCrew
   );
 }
 
-function BadgesScreen({ stats, myId, friends, onSearchProfiles, onAddFriend, onRemoveFriend }) {
+function FriendsScreen({ myId, friends, onSearchProfiles, onAddFriend, onRemoveFriend }) {
   const [copied, setCopied] = useState(false);
   const [friendQuery, setFriendQuery] = useState("");
   const [friendResults, setFriendResults] = useState([]);
-  const unlocked = BADGES.filter((b) => stats[b.statKey] >= b.target);
-  const locked = BADGES.filter((b) => stats[b.statKey] < b.target);
-  const nextBadge = locked.reduce(
-    (best, b) => (best == null || stats[b.statKey] / b.target > stats[best.statKey] / best.target ? b : best),
-    null
-  );
 
   const inviteLink = `${window.location.origin}${window.location.pathname}?invite=${myId}`;
 
@@ -1007,7 +1002,7 @@ function BadgesScreen({ stats, myId, friends, onSearchProfiles, onAddFriend, onR
           no friends added yet — search a name above, or share your invite link.
         </div>
       ) : (
-        <div style={{ marginBottom: 20 }}>
+        <div>
           {friends.map((f) => (
             <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderBottom: `1px solid ${colors.line}` }}>
               <span style={{ fontFamily: bodyFont, fontSize: 13, color: colors.text, fontWeight: 600 }}>👋 {f.name}</span>
@@ -1021,7 +1016,20 @@ function BadgesScreen({ stats, myId, friends, onSearchProfiles, onAddFriend, onR
           ))}
         </div>
       )}
+    </div>
+  );
+}
 
+function BadgesScreen({ stats }) {
+  const unlocked = BADGES.filter((b) => stats[b.statKey] >= b.target);
+  const locked = BADGES.filter((b) => stats[b.statKey] < b.target);
+  const nextBadge = locked.reduce(
+    (best, b) => (best == null || stats[b.statKey] / b.target > stats[best.statKey] / best.target ? b : best),
+    null
+  );
+
+  return (
+    <div style={{ padding: "20px 0 20px" }}>
       <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
         <div style={{ flex: 1, background: colors.surface, borderRadius: 14, padding: 14, textAlign: "center" }}>
           <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 24, color: "#FF3D9A" }}>{stats.checkinCount}</div>
@@ -1804,15 +1812,16 @@ export default function App() {
                   onAddCrewMember={addCrewMember}
                   myId={session.user.id}
                 />
-              ) : view === "you" ? (
-                <BadgesScreen
-                  stats={stats}
+              ) : view === "friends" ? (
+                <FriendsScreen
                   myId={session.user.id}
                   friends={friends}
                   onSearchProfiles={searchProfiles}
                   onAddFriend={addFriend}
                   onRemoveFriend={removeFriend}
                 />
+              ) : view === "you" ? (
+                <BadgesScreen stats={stats} />
               ) : (
                 <FeedScreen
                   groups={groups}
