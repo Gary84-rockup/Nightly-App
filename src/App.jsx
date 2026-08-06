@@ -508,7 +508,7 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
   );
 }
 
-function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, defaultExpanded, isFavorite, onToggleFavorite, friendIds, crews, onCallCrew }) {
+function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVibe, defaultExpanded, isFavorite, onToggleFavorite, friendIds, crews, onCallCrew }) {
   const [pickingCrew, setPickingCrew] = useState(false);
   const [called, setCalled] = useState(false);
   const [expanded, setExpanded] = useState(!!defaultExpanded);
@@ -617,6 +617,22 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, defaultExpa
           )}
           {mine ? (
             <div style={{ marginTop: 10 }}>
+              <div style={{ fontFamily: monoFont, fontSize: 9.5, letterSpacing: "0.06em", color: colors.textMuted, textTransform: "uppercase", marginBottom: 6 }}>
+                update your vibe
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                {Object.entries(VIBES).map(([key, vb]) => (
+                  <Button
+                    key={key}
+                    variant={mine.vibe === key ? "primary" : "ghost"}
+                    accent={vb.color}
+                    onClick={() => onUpdateVibe(mine.id, key)}
+                    style={{ padding: "6px 10px", fontSize: 11.5 }}
+                  >
+                    {vb.emoji} {vb.label}
+                  </Button>
+                ))}
+              </div>
               <Button variant="danger" onClick={() => onCheckOut(mine.id)} style={{ padding: "7px 12px", fontSize: 11.5 }}>
                 check out
               </Button>
@@ -1124,7 +1140,7 @@ function BadgesScreen({ stats }) {
   );
 }
 
-function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, crews, onCallCrew, crewCalls, myName, myId, onCheckOut, onCheckInHere, onStartCheckinAt }) {
+function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, crews, onCallCrew, crewCalls, myName, myId, onCheckOut, onCheckInHere, onUpdateVibe, onStartCheckinAt }) {
   const [query, setQuery] = useState("");
   const [osmResults, setOsmResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -1275,6 +1291,7 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
               myId={myId}
               onCheckOut={onCheckOut}
               onCheckInHere={onCheckInHere}
+              onUpdateVibe={onUpdateVibe}
               isFavorite={true}
               onToggleFavorite={onToggleFavorite}
               friendIds={friendIds}
@@ -1417,6 +1434,7 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
             myId={myId}
             onCheckOut={onCheckOut}
             onCheckInHere={onCheckInHere}
+            onUpdateVibe={onUpdateVibe}
             isFavorite={false}
             onToggleFavorite={onToggleFavorite}
             friendIds={friendIds}
@@ -1757,6 +1775,12 @@ export default function App() {
     else { loadData(); loadStats(); }
   };
 
+  const updateVibe = async (checkinId, vibe) => {
+    const { error: updateErr } = await supabase.from("checkins").update({ vibe }).eq("id", checkinId);
+    if (updateErr) setError("Couldn't update your vibe — try again.");
+    else loadData();
+  };
+
   const grouped = {};
   checkins.forEach((c) => {
     if (!grouped[c.venue_id]) grouped[c.venue_id] = [];
@@ -1835,6 +1859,7 @@ export default function App() {
                   myName={profile.name}
                   myId={session.user.id}
                   onCheckOut={checkOut}
+                  onUpdateVibe={updateVibe}
                   onStartCheckinAt={(name) => { setPrefillVenue(name); setPresetVenue(null); setView("checkin"); }}
                   onCheckInHere={(venue) => { setPresetVenue(venue); setPrefillVenue(""); setView("checkin"); }}
                 />
