@@ -181,19 +181,33 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
     let cancelled = false;
     setNearbyStatus("loading");
     const { lat, lng } = geo.coords;
-    const q = `[out:json][timeout:20];(node["amenity"~"^(bar|pub|nightclub)$"](around:2000,${lat},${lng});way["amenity"~"^(bar|pub|nightclub)$"](around:2000,${lat},${lng}););out center 20;`;
+    const q = `[out:json][timeout:8];(node["amenity"~"^(bar|pub|nightclub)$"](around:2000,${lat},${lng});way["amenity"~"^(bar|pub|nightclub)$"](around:2000,${lat},${lng}););out center 20;`;
     const endpoints = [
       `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`,
       `https://overpass.kumi.systems/api/interpreter?data=${encodeURIComponent(q)}`,
     ];
 
+    // The free public Overpass endpoints have no reliability guarantee and can hang or sit
+    // behind a slow gateway for a minute or more under load — without a client-side timeout,
+    // a fetch that never settles leaves the UI stuck on "looking for nearby spots…" forever,
+    // which looks identical to broken. Fail each attempt fast and move on.
+    const fetchWithTimeout = async (url, ms) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), ms);
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+
     const tryFetch = async () => {
       let lastErr;
       for (const url of endpoints) {
         try {
-          const res = await fetch(url);
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          return await res.json();
+          return await fetchWithTimeout(url, 7000);
         } catch (e) {
           lastErr = e;
         }
