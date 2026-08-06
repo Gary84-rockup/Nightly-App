@@ -165,6 +165,7 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
   const [includeCrew, setIncludeCrew] = useState(!!tonightCrew);
   const [nearby, setNearby] = useState([]);
   const [nearbyStatus, setNearbyStatus] = useState("idle");
+  const [nearbyRetryCount, setNearbyRetryCount] = useState(0);
   const justSelectedRef = React.useRef(false);
   const geo = useGeolocation();
 
@@ -177,12 +178,32 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
   // Nearby bars/pubs/clubs via Overpass (OSM), once we have a location — lets people tap instead of typing.
   useEffect(() => {
     if (presetVenue || geo.status !== "granted" || !geo.coords) return;
+    let cancelled = false;
     setNearbyStatus("loading");
     const { lat, lng } = geo.coords;
-    const q = `[out:json][timeout:15];(node["amenity"~"^(bar|pub|nightclub)$"](around:1200,${lat},${lng});way["amenity"~"^(bar|pub|nightclub)$"](around:1200,${lat},${lng}););out center 15;`;
-    fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`)
-      .then((res) => res.json())
+    const q = `[out:json][timeout:20];(node["amenity"~"^(bar|pub|nightclub)$"](around:2000,${lat},${lng});way["amenity"~"^(bar|pub|nightclub)$"](around:2000,${lat},${lng}););out center 20;`;
+    const endpoints = [
+      `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`,
+      `https://overpass.kumi.systems/api/interpreter?data=${encodeURIComponent(q)}`,
+    ];
+
+    const tryFetch = async () => {
+      let lastErr;
+      for (const url of endpoints) {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return await res.json();
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+      throw lastErr;
+    };
+
+    tryFetch()
       .then((data) => {
+        if (cancelled) return;
         const results = (data.elements || [])
           .map((el) => {
             const elLat = el.lat ?? el.center?.lat;
@@ -201,10 +222,16 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
           .sort((a, b) => a.distance - b.distance)
           .slice(0, 8);
         setNearby(results);
-        setNearbyStatus("done");
+        setNearbyStatus(results.length > 0 ? "done" : "empty");
       })
-      .catch(() => setNearbyStatus("error"));
-  }, [presetVenue, geo.status, geo.coords]);
+      .catch(() => {
+        if (!cancelled) setNearbyStatus("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [presetVenue, geo.status, geo.coords, nearbyRetryCount]);
 
   useEffect(() => {
     if (presetVenue || justSelectedRef.current) {
@@ -217,22 +244,42 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
     }
     const timer = setTimeout(async () => {
       try {
-        const params = new URLSearchParams({ format: "json", limit: "5", extratags: "1", q: venueQuery });
+        let data = [];
         if (geo.coords) {
-          // Soft proximity bias (not a hard filter) so nearby matches rank first without hiding results elsewhere.
-          const d = 0.07;
-          params.set("viewbox", `${geo.coords.lng - d},${geo.coords.lat + d},${geo.coords.lng + d},${geo.coords.lat - d}`);
+          // Hard-filtered to a ~10km box around the user first — a soft bias alone let a same-named
+          // venue on the other side of the country outrank the real nearby match in the top results.
+          const d = 0.09;
+          const boundedParams = new URLSearchParams({
+            format: "json",
+            limit: "8",
+            extratags: "1",
+            q: venueQuery,
+            viewbox: `${geo.coords.lng - d},${geo.coords.lat + d},${geo.coords.lng + d},${geo.coords.lat - d}`,
+            bounded: "1",
+          });
+          const res = await fetch(`https://nominatim.openstreetmap.org/search?${boundedParams.toString()}`);
+          data = await res.json();
+          if (data.length === 0) {
+            // Nothing with that name nearby — fall back to a global search rather than showing nothing.
+            const fallbackParams = new URLSearchParams({ format: "json", limit: "5", extratags: "1", q: venueQuery });
+            const fallbackRes = await fetch(`https://nominatim.openstreetmap.org/search?${fallbackParams.toString()}`);
+            data = await fallbackRes.json();
+          }
+        } else {
+          const params = new URLSearchParams({ format: "json", limit: "5", extratags: "1", q: venueQuery });
+          const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`);
+          data = await res.json();
         }
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`);
-        const data = await res.json();
         const seen = new Set();
         let results = data.filter((r) => (seen.has(r.display_name) ? false : (seen.add(r.display_name), true)));
         if (geo.coords) {
-          results = results.sort(
-            (a, b) =>
-              distanceMeters(geo.coords.lat, geo.coords.lng, parseFloat(a.lat), parseFloat(a.lon)) -
-              distanceMeters(geo.coords.lat, geo.coords.lng, parseFloat(b.lat), parseFloat(b.lon))
-          );
+          results = results
+            .sort(
+              (a, b) =>
+                distanceMeters(geo.coords.lat, geo.coords.lng, parseFloat(a.lat), parseFloat(a.lon)) -
+                distanceMeters(geo.coords.lat, geo.coords.lng, parseFloat(b.lat), parseFloat(b.lon))
+            )
+            .slice(0, 5);
         }
         setVenueResults(results);
       } catch (e) {
@@ -314,6 +361,20 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
 
           {geo.status === "granted" && nearbyStatus === "loading" && (
             <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 12 }}>looking for nearby spots…</div>
+          )}
+          {geo.status === "granted" && nearbyStatus === "empty" && (
+            <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 12 }}>nothing tagged as a bar/pub/club within 2km on OpenStreetMap — search below instead.</div>
+          )}
+          {geo.status === "granted" && nearbyStatus === "error" && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 12 }}>
+              <span>couldn't load nearby spots — search still works below.</span>
+              <button
+                onClick={() => setNearbyRetryCount((c) => c + 1)}
+                style={{ background: "none", border: "none", color: "#34E4EA", fontSize: 11, fontFamily: bodyFont, cursor: "pointer", fontWeight: 700, padding: 0, marginLeft: 8, flexShrink: 0 }}
+              >
+                retry
+              </button>
+            </div>
           )}
           {geo.status === "granted" && nearby.length > 0 && (
             <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 14 }}>
