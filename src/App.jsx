@@ -54,6 +54,41 @@ function isOpenLate(hours) {
   });
 }
 
+function distanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatDistance(m) {
+  if (m == null) return null;
+  if (m < 1000) return `${Math.round(m / 10) * 10}m`;
+  return `${(m / 1000).toFixed(1)}km`;
+}
+
+// Browser Geolocation API — no key required, but needs a user-permission grant and HTTPS (or localhost).
+function useGeolocation() {
+  const [state, setState] = useState({ status: "idle", coords: null });
+
+  const request = useCallback(() => {
+    if (!navigator.geolocation) {
+      setState({ status: "unsupported", coords: null });
+      return;
+    }
+    setState((s) => ({ ...s, status: "loading" }));
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setState({ status: "granted", coords: { lat: pos.coords.latitude, lng: pos.coords.longitude } }),
+      () => setState({ status: "denied", coords: null }),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
+  }, []);
+
+  return { ...state, request };
+}
+
 function Button({ children, onClick, variant = "primary", accent, style, disabled }) {
   const base = {
     padding: "12px 16px",
@@ -119,7 +154,48 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
   const [note, setNote] = useState("");
   const [hours, setHours] = useState(3);
   const [includeCrew, setIncludeCrew] = useState(!!tonightCrew);
+  const [nearby, setNearby] = useState([]);
+  const [nearbyStatus, setNearbyStatus] = useState("idle");
   const justSelectedRef = React.useRef(false);
+  const geo = useGeolocation();
+
+  useEffect(() => {
+    if (presetVenue) return;
+    geo.request();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetVenue]);
+
+  // Nearby bars/pubs/clubs via Overpass (OSM), once we have a location — lets people tap instead of typing.
+  useEffect(() => {
+    if (presetVenue || geo.status !== "granted" || !geo.coords) return;
+    setNearbyStatus("loading");
+    const { lat, lng } = geo.coords;
+    const q = `[out:json][timeout:15];(node["amenity"~"^(bar|pub|nightclub)$"](around:1200,${lat},${lng});way["amenity"~"^(bar|pub|nightclub)$"](around:1200,${lat},${lng}););out center 15;`;
+    fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        const results = (data.elements || [])
+          .map((el) => {
+            const elLat = el.lat ?? el.center?.lat;
+            const elLng = el.lon ?? el.center?.lon;
+            const name = el.tags?.name;
+            if (!name || elLat == null || elLng == null) return null;
+            return {
+              name,
+              lat: elLat,
+              lng: elLng,
+              website: el.tags?.website || el.tags?.["contact:website"] || null,
+              distance: distanceMeters(lat, lng, elLat, elLng),
+            };
+          })
+          .filter(Boolean)
+          .sort((a, b) => a.distance - b.distance)
+          .slice(0, 8);
+        setNearby(results);
+        setNearbyStatus("done");
+      })
+      .catch(() => setNearbyStatus("error"));
+  }, [presetVenue, geo.status, geo.coords]);
 
   useEffect(() => {
     if (presetVenue || justSelectedRef.current) {
@@ -132,31 +208,46 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
     }
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&limit=5&extratags=1&q=${encodeURIComponent(venueQuery)}`
-        );
+        const params = new URLSearchParams({ format: "json", limit: "5", extratags: "1", q: venueQuery });
+        if (geo.coords) {
+          // Soft proximity bias (not a hard filter) so nearby matches rank first without hiding results elsewhere.
+          const d = 0.07;
+          params.set("viewbox", `${geo.coords.lng - d},${geo.coords.lat + d},${geo.coords.lng + d},${geo.coords.lat - d}`);
+        }
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`);
         const data = await res.json();
         const seen = new Set();
-        setVenueResults(data.filter((r) => (seen.has(r.display_name) ? false : (seen.add(r.display_name), true))));
+        let results = data.filter((r) => (seen.has(r.display_name) ? false : (seen.add(r.display_name), true)));
+        if (geo.coords) {
+          results = results.sort(
+            (a, b) =>
+              distanceMeters(geo.coords.lat, geo.coords.lng, parseFloat(a.lat), parseFloat(a.lon)) -
+              distanceMeters(geo.coords.lat, geo.coords.lng, parseFloat(b.lat), parseFloat(b.lon))
+          );
+        }
+        setVenueResults(results);
       } catch (e) {
         setVenueResults([]);
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [venueQuery, presetVenue]);
+  }, [venueQuery, presetVenue, geo.coords]);
+
+  const pickVenue = (v) => {
+    justSelectedRef.current = true;
+    setSelectedVenue(v);
+    setVenueQuery(v.name);
+    setVenueResults([]);
+  };
 
   const selectVenue = (r) => {
-    justSelectedRef.current = true;
-    const shortName = r.display_name.split(",")[0];
-    setSelectedVenue({
-      name: shortName,
+    pickVenue({
+      name: r.display_name.split(",")[0],
       lat: parseFloat(r.lat),
       lng: parseFloat(r.lon),
       website: (r.extratags && (r.extratags.website || r.extratags["contact:website"])) || null,
       openingHours: (r.extratags && r.extratags.opening_hours) || null,
     });
-    setVenueQuery(shortName);
-    setVenueResults([]);
   };
 
   const label = { fontFamily: monoFont, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: colors.textMuted, marginBottom: 6, display: "block" };
@@ -185,6 +276,35 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
         </div>
       ) : (
         <>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <span style={{ fontFamily: monoFont, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: colors.textMuted }}>
+              📍 {geo.status === "loading" ? "finding you…" : geo.status === "granted" ? "near you" : "location off"}
+            </span>
+            {(geo.status === "denied" || geo.status === "unsupported" || geo.status === "idle") && (
+              <button onClick={geo.request} style={{ background: "none", border: "none", color: "#34E4EA", fontSize: 10.5, fontFamily: bodyFont, cursor: "pointer", fontWeight: 700, padding: 0 }}>
+                turn on location
+              </button>
+            )}
+          </div>
+
+          {geo.status === "granted" && nearbyStatus === "loading" && (
+            <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 12 }}>looking for nearby spots…</div>
+          )}
+          {geo.status === "granted" && nearby.length > 0 && (
+            <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 14 }}>
+              {nearby.map((v) => (
+                <div
+                  key={`${v.name}-${v.lat}-${v.lng}`}
+                  onClick={() => pickVenue(v)}
+                  style={{ flex: "0 0 auto", minWidth: 120, maxWidth: 150, background: colors.surfaceRaised, border: `1px solid ${colors.line}`, borderRadius: 10, padding: "8px 10px", cursor: "pointer" }}
+                >
+                  <div style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 12, color: colors.text, marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{v.name}</div>
+                  <div style={{ fontFamily: monoFont, fontSize: 10, color: "#34E4EA" }}>{formatDistance(v.distance)} away</div>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div style={{ position: "relative", marginBottom: 6 }}>
             <input
               style={inputStyle}
@@ -194,11 +314,15 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
             />
             {venueResults.length > 0 && (
               <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10, background: colors.surfaceRaised, border: `1px solid ${colors.line}`, borderRadius: 9, marginTop: 4, overflow: "hidden" }}>
-                {venueResults.map((r) => (
-                  <div key={r.place_id} onClick={() => selectVenue(r)} style={{ padding: "9px 12px", fontSize: 12.5, color: colors.text, cursor: "pointer", borderBottom: `1px solid ${colors.line}` }}>
-                    {r.display_name}
-                  </div>
-                ))}
+                {venueResults.map((r) => {
+                  const dist = geo.coords ? distanceMeters(geo.coords.lat, geo.coords.lng, parseFloat(r.lat), parseFloat(r.lon)) : null;
+                  return (
+                    <div key={r.place_id} onClick={() => selectVenue(r)} style={{ padding: "9px 12px", fontSize: 12.5, color: colors.text, cursor: "pointer", borderBottom: `1px solid ${colors.line}` }}>
+                      <div>{r.display_name}</div>
+                      {dist != null && <div style={{ fontFamily: monoFont, fontSize: 10, color: colors.textMuted, marginTop: 2 }}>{formatDistance(dist)} away</div>}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
