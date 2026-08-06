@@ -270,8 +270,14 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
           const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`);
           data = await res.json();
         }
+        // Nominatim text search matches names on any tagged feature, not just venues — e.g. a bus
+        // stop named after the pub next to it ("The Three Tuns PH") will match "three tuns" too.
+        // Exclude classes that are never places you'd check into.
+        const NON_VENUE_CLASSES = new Set(["highway", "boundary", "waterway", "natural", "landuse", "railway", "place", "administrative"]);
         const seen = new Set();
-        let results = data.filter((r) => (seen.has(r.display_name) ? false : (seen.add(r.display_name), true)));
+        let results = data
+          .filter((r) => !NON_VENUE_CLASSES.has(r.class))
+          .filter((r) => (seen.has(r.display_name) ? false : (seen.add(r.display_name), true)));
         if (geo.coords) {
           results = results
             .sort(
