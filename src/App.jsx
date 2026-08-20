@@ -104,6 +104,39 @@ function useGeolocation() {
   return { ...state, request };
 }
 
+// Push notifications only work for a PWA that's been added to the home screen
+// (iOS 16.4+, or Android/Chrome) — see PUSH-NOTIFICATIONS-SETUP.md.
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+}
+
+async function subscribeToPush(supabaseClient, userId) {
+  const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+  if (!vapidKey) throw new Error("VITE_VAPID_PUBLIC_KEY isn't set — see PUSH-NOTIFICATIONS-SETUP.md");
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    throw new Error("Push isn't supported in this browser");
+  }
+
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") throw new Error("permission-denied");
+
+  const registration = await navigator.serviceWorker.ready;
+  const subscription = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(vapidKey),
+  });
+  const json = subscription.toJSON();
+
+  const { error } = await supabaseClient.from("push_subscriptions").upsert(
+    { user_id: userId, endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth },
+    { onConflict: "endpoint" }
+  );
+  if (error) throw error;
+}
+
 function Button({ children, onClick, variant = "primary", accent, style, disabled }) {
   const base = {
     padding: "12px 16px",
@@ -729,6 +762,25 @@ function CrewScreen({ crews, checkins, tonightCrew, setTonightCrew, onCreateCrew
   const [copied, setCopied] = useState(false);
   const [memberQuery, setMemberQuery] = useState("");
   const [memberResults, setMemberResults] = useState([]);
+  const [notifStatus, setNotifStatus] = useState(
+    "Notification" in window ? Notification.permission : "unsupported"
+  );
+  const [notifBusy, setNotifBusy] = useState(false);
+  const [notifError, setNotifError] = useState(null);
+
+  const enableNotifications = async () => {
+    setNotifBusy(true);
+    setNotifError(null);
+    try {
+      await subscribeToPush(supabase, myId);
+      setNotifStatus("granted");
+    } catch (e) {
+      setNotifStatus("Notification" in window ? Notification.permission : "unsupported");
+      setNotifError(e.message === "permission-denied" ? "notifications blocked — enable them in your browser/phone settings" : "couldn't turn on notifications — try again");
+    } finally {
+      setNotifBusy(false);
+    }
+  };
 
   const selected = crews.find((c) => c.id === selectedId);
 
@@ -883,6 +935,23 @@ function CrewScreen({ crews, checkins, tonightCrew, setTonightCrew, onCreateCrew
       <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 16, lineHeight: 1.4 }}>
         build a crew for tonight, save it, and check in together.
       </div>
+
+      {notifStatus !== "granted" && notifStatus !== "unsupported" && (
+        <div style={{ background: colors.surface, border: `1px solid ${colors.line}`, borderRadius: 14, padding: 14, marginBottom: 16 }}>
+          <div style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 13, color: colors.text, marginBottom: 4 }}>
+            🔔 don't miss a call
+          </div>
+          <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 10, lineHeight: 1.4 }}>
+            turn on notifications so you know the moment someone calls the crew — even with the app closed.
+          </div>
+          {notifError && (
+            <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.danger, marginBottom: 8 }}>{notifError}</div>
+          )}
+          <Button onClick={enableNotifications} disabled={notifBusy} style={{ width: "100%" }}>
+            {notifBusy ? "turning on…" : "turn on notifications"}
+          </Button>
+        </div>
+      )}
 
       {crews.length === 0 && (
         <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.textMuted, marginBottom: 16 }}>
