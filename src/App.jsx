@@ -160,8 +160,33 @@ function Button({ children, onClick, variant = "primary", accent, style, disable
   );
 }
 
-function NameGate({ onSet, busy }) {
+function NameGate({ onSet, busy, onSendMagicLink }) {
   const [name, setName] = useState("");
+  const [showSignIn, setShowSignIn] = useState(false);
+  const [email, setEmail] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [signInError, setSignInError] = useState(null);
+
+  const inputStyle = {
+    width: "100%", padding: "12px 14px", borderRadius: 10, border: `1px solid ${colors.line}`,
+    background: colors.surface, color: colors.text, fontFamily: bodyFont, fontSize: 14,
+    marginBottom: 14, boxSizing: "border-box",
+  };
+
+  const sendLink = async () => {
+    setSending(true);
+    setSignInError(null);
+    try {
+      await onSendMagicLink(email.trim());
+      setSent(true);
+    } catch (e) {
+      setSignInError("Couldn't send that link — try again.");
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
     <div style={{ padding: "70px 24px", textAlign: "center" }}>
       <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 13, color: "#FF3D9A", letterSpacing: "0.1em", marginBottom: 6 }}>
@@ -170,22 +195,60 @@ function NameGate({ onSet, busy }) {
       <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 24, color: colors.text, marginBottom: 8 }}>
         who's out tonight?
       </div>
-      <div style={{ fontFamily: bodyFont, fontSize: 13, color: colors.textMuted, marginBottom: 20, lineHeight: 1.5 }}>
-        just your name for now — real sign-in comes later.
-      </div>
-      <input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="your name"
-        style={{
-          width: "100%", padding: "12px 14px", borderRadius: 10, border: `1px solid ${colors.line}`,
-          background: colors.surface, color: colors.text, fontFamily: bodyFont, fontSize: 14,
-          marginBottom: 14, boxSizing: "border-box",
-        }}
-      />
-      <Button onClick={() => name.trim() && onSet(name.trim())} disabled={!name.trim() || busy} style={{ width: "100%" }}>
-        {busy ? "setting up..." : "let's go"}
-      </Button>
+
+      {showSignIn ? (
+        sent ? (
+          <div style={{ fontFamily: bodyFont, fontSize: 13, color: colors.textMuted, lineHeight: 1.5 }}>
+            ✉️ check <strong style={{ color: colors.text }}>{email.trim()}</strong> for a sign-in link.
+          </div>
+        ) : (
+          <>
+            <div style={{ fontFamily: bodyFont, fontSize: 13, color: colors.textMuted, marginBottom: 20, lineHeight: 1.5 }}>
+              enter the email you saved your account with — we'll send a link, no password needed.
+            </div>
+            <input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              type="email"
+              style={inputStyle}
+            />
+            {signInError && (
+              <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: colors.danger, marginBottom: 10 }}>{signInError}</div>
+            )}
+            <Button onClick={sendLink} disabled={!email.trim() || sending} style={{ width: "100%", marginBottom: 10 }}>
+              {sending ? "sending…" : "send sign-in link"}
+            </Button>
+            <button
+              onClick={() => setShowSignIn(false)}
+              style={{ background: "none", border: "none", color: colors.textMuted, fontFamily: bodyFont, fontSize: 12, cursor: "pointer" }}
+            >
+              ← back
+            </button>
+          </>
+        )
+      ) : (
+        <>
+          <div style={{ fontFamily: bodyFont, fontSize: 13, color: colors.textMuted, marginBottom: 20, lineHeight: 1.5 }}>
+            just your name to try it out — no account needed.
+          </div>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="your name"
+            style={inputStyle}
+          />
+          <Button onClick={() => name.trim() && onSet(name.trim())} disabled={!name.trim() || busy} style={{ width: "100%", marginBottom: 14 }}>
+            {busy ? "setting up..." : "let's go"}
+          </Button>
+          <button
+            onClick={() => setShowSignIn(true)}
+            style={{ background: "none", border: "none", color: "#34E4EA", fontFamily: bodyFont, fontSize: 12, cursor: "pointer", fontWeight: 600 }}
+          >
+            already saved an account? sign in
+          </button>
+        </>
+      )}
     </div>
   );
 }
@@ -1105,7 +1168,70 @@ function FriendsScreen({ myId, friends, onSearchProfiles, onAddFriend, onRemoveF
   );
 }
 
-function BadgesScreen({ stats }) {
+function AccountCard({ userEmail, onSaveAccount, onLogout }) {
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState(null);
+
+  const submit = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await onSaveAccount(email.trim());
+      setSent(true);
+    } catch (e) {
+      setError("Couldn't save that — try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (userEmail) {
+    return (
+      <div style={{ background: colors.surface, border: `1px solid ${colors.line}`, borderRadius: 14, padding: 14, marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+        <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          ✉️ signed in as <strong>{userEmail}</strong>
+        </div>
+        <Button variant="ghost" onClick={onLogout} style={{ padding: "7px 12px", fontSize: 11.5, flexShrink: 0 }}>
+          log out
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ background: colors.surface, border: `1px solid ${colors.line}`, borderRadius: 14, padding: 14, marginBottom: 20 }}>
+      <div style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 13, color: colors.text, marginBottom: 4 }}>
+        💾 save your account
+      </div>
+      {sent ? (
+        <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, lineHeight: 1.4 }}>
+          ✉️ check <strong style={{ color: colors.text }}>{email.trim()}</strong> for a confirmation link.
+        </div>
+      ) : (
+        <>
+          <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 10, lineHeight: 1.4 }}>
+            add an email so you can get back into this exact account — same badges, friends, and crews — on another device.
+          </div>
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            type="email"
+            style={{ width: "100%", padding: "10px 12px", borderRadius: 9, border: `1px solid ${colors.line}`, background: colors.bg, color: colors.text, fontFamily: bodyFont, fontSize: 13, boxSizing: "border-box", marginBottom: 8 }}
+          />
+          {error && <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.danger, marginBottom: 8 }}>{error}</div>}
+          <Button onClick={submit} disabled={!email.trim() || busy} style={{ width: "100%" }}>
+            {busy ? "sending…" : "send confirmation link"}
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function BadgesScreen({ stats, userEmail, onSaveAccount, onLogout }) {
   const unlocked = BADGES.filter((b) => stats[b.statKey] >= b.target);
   const locked = BADGES.filter((b) => stats[b.statKey] < b.target);
   const nextBadge = locked.reduce(
@@ -1115,6 +1241,8 @@ function BadgesScreen({ stats }) {
 
   return (
     <div style={{ padding: "20px 0 20px" }}>
+      <AccountCard userEmail={userEmail} onSaveAccount={onSaveAccount} onLogout={onLogout} />
+
       <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
         <div style={{ flex: 1, background: colors.surface, borderRadius: 14, padding: 14, textAlign: "center" }}>
           <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 24, color: "#FF3D9A" }}>{stats.checkinCount}</div>
@@ -1540,40 +1668,72 @@ export default function App() {
         const { data: existing } = await supabase.auth.getSession();
         let currentSession = existing.session;
         if (!currentSession) {
+          // Zero-friction default: try the app without an account. "save your account" (You tab)
+          // or the "already saved an account? sign in" link upgrades/replaces this later.
           const { data, error: authErr } = await supabase.auth.signInAnonymously();
           if (authErr) throw authErr;
           currentSession = data.session;
         }
         setSession(currentSession);
-        const { data: profileRow } = await supabase.from("profiles").select("*").eq("id", currentSession.user.id).maybeSingle();
-        setProfile(profileRow || null);
-
-        if (profileRow) {
-          try {
-            const params = new URLSearchParams(window.location.search);
-            const inviterId = params.get("invite");
-            const crewInviteId = params.get("crew");
-            if (inviterId && inviterId !== currentSession.user.id) {
-              await supabase.from("friendships").insert({ user_id_a: currentSession.user.id, user_id_b: inviterId });
-            }
-            if (crewInviteId) {
-              await supabase
-                .from("crew_members")
-                .insert({ crew_id: crewInviteId, user_id: currentSession.user.id, user_name: profileRow.name });
-            }
-            if (inviterId || crewInviteId) window.history.replaceState({}, "", window.location.pathname);
-          } catch (e) {
-            // Non-fatal — duplicate friendship/crew membership is fine to ignore
-          }
-        }
       } catch (e) {
         setError("Couldn't connect. Check your Supabase setup in .env");
-      } finally {
-        setLoading(false);
+        setLoading(false); // no session means the profile-sync effect below never runs, so nothing else will clear this
       }
     };
     init();
+
+    // Catches every later auth change too — signing in via a magic link (new device, or
+    // returning after "save your account"), linking an email to the current anonymous
+    // account, and signing out. Keyed off this rather than only the one-time init() above
+    // so the app actually reacts when the active account changes.
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      if (newSession) {
+        setSession(newSession);
+      } else {
+        // Signed out — fall back to a fresh anonymous session immediately rather than
+        // leaving the app with no session at all (NameGate's guest flow needs one).
+        supabase.auth.signInAnonymously().then(({ data }) => setSession(data.session));
+      }
+    });
+    return () => listener.subscription.unsubscribe();
   }, []);
+
+  // Keeps profile in sync with whichever account is currently active, and handles pending
+  // invite links once a profile exists — runs on the first sign-in and again any time the
+  // active user actually changes (not on routine token refreshes, hence keying off the id).
+  useEffect(() => {
+    if (!session) {
+      setProfile(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data: profileRow } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
+      if (cancelled) return;
+      setProfile(profileRow || null);
+      setLoading(false);
+
+      if (profileRow) {
+        try {
+          const params = new URLSearchParams(window.location.search);
+          const inviterId = params.get("invite");
+          const crewInviteId = params.get("crew");
+          if (inviterId && inviterId !== session.user.id) {
+            await supabase.from("friendships").insert({ user_id_a: session.user.id, user_id_b: inviterId });
+          }
+          if (crewInviteId) {
+            await supabase.from("crew_members").insert({ crew_id: crewInviteId, user_id: session.user.id, user_name: profileRow.name });
+          }
+          if (inviterId || crewInviteId) window.history.replaceState({}, "", window.location.pathname);
+        } catch (e) {
+          // Non-fatal — duplicate friendship/crew membership is fine to ignore
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id]);
 
   const loadData = useCallback(async () => {
     const nowIso = new Date().toISOString();
@@ -1795,6 +1955,31 @@ export default function App() {
     }
   };
 
+  // "Already saved an account? sign in" (NameGate) — for a new device/browser, or after
+  // signing out. Independent of whatever anonymous session is currently active; clicking
+  // the emailed link swaps the active session over to the real account.
+  const sendMagicLink = async (email) => {
+    const { error: otpErr } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: `${window.location.origin}${window.location.pathname}` },
+    });
+    if (otpErr) throw otpErr;
+  };
+
+  // "Save your account" (You tab) — links an email to the CURRENT anonymous account rather
+  // than creating a new one, so every check-in/friend/crew/badge already earned stays intact.
+  const saveAccount = async (email) => {
+    const { error: updateErr } = await supabase.auth.updateUser(
+      { email },
+      { emailRedirectTo: `${window.location.origin}${window.location.pathname}` }
+    );
+    if (updateErr) throw updateErr;
+  };
+
+  const logout = async () => {
+    await supabase.auth.signOut();
+  };
+
   const checkIn = async (data) => {
     try {
       let venueId = data.venue.id || null;
@@ -1866,7 +2051,7 @@ export default function App() {
         {loading ? (
           <div style={{ padding: 60, textAlign: "center", color: colors.textMuted }}>loading…</div>
         ) : !profile ? (
-          <NameGate onSet={handleSetName} busy={settingUp} />
+          <NameGate onSet={handleSetName} busy={settingUp} onSendMagicLink={sendMagicLink} />
         ) : (
           <>
             <div style={{ padding: "20px 20px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -1914,7 +2099,7 @@ export default function App() {
                   onRemoveFriend={removeFriend}
                 />
               ) : view === "you" ? (
-                <BadgesScreen stats={stats} />
+                <BadgesScreen stats={stats} userEmail={session.user.email} onSaveAccount={saveAccount} onLogout={logout} />
               ) : (
                 <FeedScreen
                   groups={groups}
