@@ -63,6 +63,19 @@ function formatDistance(m) {
   return `${(m / 1000).toFixed(1)}km`;
 }
 
+const EVENT_CATEGORY = {
+  concerts: { emoji: "🎤", label: "gig" },
+  festivals: { emoji: "🎪", label: "festival" },
+  community: { emoji: "🎉", label: "community" },
+  "performing-arts": { emoji: "🎭", label: "show" },
+};
+
+function formatEventDate(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) +
+    " · " + d.toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit" });
+}
+
 // Browser Geolocation API — no key required, but needs a user-permission grant and HTTPS (or localhost).
 function useGeolocation() {
   const [state, setState] = useState({ status: "idle", coords: null });
@@ -1345,6 +1358,38 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
   const [spotlightId, setSpotlightId] = useState(null);
   const [busyOnly, setBusyOnly] = useState(false);
   const [openLateOnly, setOpenLateOnly] = useState(false);
+  const [events, setEvents] = useState([]);
+  const [eventsStatus, setEventsStatus] = useState("idle");
+  const [eventsRetryCount, setEventsRetryCount] = useState(0);
+  const eventsGeo = useGeolocation();
+
+  useEffect(() => {
+    eventsGeo.request();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Nearby events (concerts/festivals/community/shows) via a PredictHQ-backed
+  // Edge Function, same "device location in, results out" shape as the
+  // near-you venue list on the check-in tab.
+  useEffect(() => {
+    if (eventsGeo.status !== "granted" || !eventsGeo.coords) return;
+    let cancelled = false;
+    setEventsStatus("loading");
+    supabase.functions
+      .invoke("nearby-events", { body: { lat: eventsGeo.coords.lat, lng: eventsGeo.coords.lng } })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) throw error;
+        setEvents(data.events || []);
+        setEventsStatus(data.events?.length > 0 ? "done" : "empty");
+      })
+      .catch(() => {
+        if (!cancelled) setEventsStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [eventsGeo.status, eventsGeo.coords, eventsRetryCount]);
 
   const favoriteGroups = Array.from(favoriteIds)
     .map((venueId) => {
@@ -1471,6 +1516,49 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
             <Button variant="ghost" onClick={() => setSpotlightId(null)} style={{ padding: "9px 12px", fontSize: 12 }}>
               dismiss
             </Button>
+          </div>
+        </div>
+      )}
+
+      {eventsGeo.status === "granted" && eventsStatus === "loading" && (
+        <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 14 }}>looking for events nearby…</div>
+      )}
+      {eventsGeo.status === "granted" && eventsStatus === "error" && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 14 }}>
+          <span>couldn't load nearby events.</span>
+          <button
+            onClick={() => setEventsRetryCount((c) => c + 1)}
+            style={{ background: "none", border: "none", color: "#34E4EA", fontSize: 11, fontFamily: bodyFont, cursor: "pointer", fontWeight: 700, padding: 0, marginLeft: 8, flexShrink: 0 }}
+          >
+            retry
+          </button>
+        </div>
+      )}
+      {eventsGeo.status === "granted" && events.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontFamily: monoFont, fontSize: 10, letterSpacing: "0.08em", color: colors.textMuted, textTransform: "uppercase", marginBottom: 8 }}>
+            🎫 on nearby
+          </div>
+          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+            {events.map((e) => {
+              const cat = EVENT_CATEGORY[e.category] || { emoji: "📅", label: e.category };
+              return (
+                <div
+                  key={e.id}
+                  style={{ flex: "0 0 auto", minWidth: 160, maxWidth: 190, background: colors.surfaceRaised, border: `1px solid ${colors.line}`, borderRadius: 10, padding: "10px 12px" }}
+                >
+                  <div style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 12.5, color: colors.text, marginBottom: 4, lineHeight: 1.3 }}>
+                    {cat.emoji} {e.title}
+                  </div>
+                  <div style={{ fontFamily: monoFont, fontSize: 10, color: "#FF3D9A", marginBottom: 2 }}>{formatEventDate(e.start)}</div>
+                  {e.venueName && (
+                    <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: colors.textMuted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      📍 {e.venueName}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
