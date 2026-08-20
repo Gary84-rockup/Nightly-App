@@ -55,6 +55,10 @@ Deno.serve(async (req) => {
       startLocal: e.start_local,
       venueName: e.entities?.find((ent: any) => ent.type === "venue")?.name || null,
       address: e.entities?.find((ent: any) => ent.type === "venue")?.formatted_address || null,
+      // PredictHQ prefixes every description with this boilerplate — strip it,
+      // it's noise to a reader. No ticket-link field exists anywhere in the
+      // PredictHQ event object (checked) — that'd need a different data source.
+      description: e.description ? e.description.replace(/^Sourced from predicthq\.com - /, "").trim() || null : null,
     }));
 
     return new Response(JSON.stringify({ events }), {

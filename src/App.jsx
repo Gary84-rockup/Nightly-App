@@ -794,9 +794,22 @@ function EventCard({ event, interest, onToggleInterest, onCheckInHere, crews, on
 
       {expanded && (
         <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }} onClick={(e) => e.stopPropagation()}>
+          {event.description && (
+            <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.text, lineHeight: 1.4 }}>{event.description}</div>
+          )}
           {event.address && (
             <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: colors.textMuted, lineHeight: 1.4 }}>{event.address}</div>
           )}
+          {/* PredictHQ has no ticket-URL field on any event, so this is a search
+              fallback rather than a direct RA/DICE-style deep link. */}
+          <a
+            href={`https://www.google.com/search?q=${encodeURIComponent(`${event.title} tickets`)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontFamily: bodyFont, fontSize: 11, color: "#34E4EA", textDecoration: "underline", fontWeight: 600 }}
+          >
+            🎟️ search for tickets
+          </a>
           {event.venueName && (
             <Button onClick={() => onCheckInHere(event.venueName)} style={{ padding: "7px 10px", fontSize: 11.5 }}>
               📍 check in there
