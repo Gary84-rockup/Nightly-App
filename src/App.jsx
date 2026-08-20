@@ -755,6 +755,99 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
   );
 }
 
+function EventCard({ event, interest, onToggleInterest, onCheckInHere, crews, onCallCrew }) {
+  const [expanded, setExpanded] = useState(false);
+  const [pickingCrew, setPickingCrew] = useState(false);
+  const [called, setCalled] = useState(false);
+  const cat = EVENT_CATEGORY[event.category] || { emoji: "📅", label: event.category };
+  const mine = interest?.mine;
+  const count = interest?.count || 0;
+
+  return (
+    <div
+      onClick={() => setExpanded((v) => !v)}
+      style={{
+        flex: "0 0 auto",
+        minWidth: 160,
+        maxWidth: expanded ? 240 : 190,
+        background: colors.surfaceRaised,
+        border: `1px solid ${mine ? "#FF3D9A88" : colors.line}`,
+        borderRadius: 10,
+        padding: "10px 12px",
+        cursor: "pointer",
+      }}
+    >
+      <div style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 12.5, color: colors.text, marginBottom: 4, lineHeight: 1.3 }}>
+        {cat.emoji} {event.title}
+      </div>
+      <div style={{ fontFamily: monoFont, fontSize: 10, color: "#FF3D9A", marginBottom: 2 }}>{formatEventDate(event.start)}</div>
+      {event.venueName && (
+        <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: colors.textMuted, whiteSpace: expanded ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          📍 {event.venueName}
+        </div>
+      )}
+      {count > 0 && (
+        <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: mine ? "#FF3D9A" : colors.textMuted, marginTop: 4, fontWeight: mine ? 700 : 500 }}>
+          🙋 {count} interested{mine ? " (you)" : ""}
+        </div>
+      )}
+
+      {expanded && (
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }} onClick={(e) => e.stopPropagation()}>
+          {event.address && (
+            <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: colors.textMuted, lineHeight: 1.4 }}>{event.address}</div>
+          )}
+          {event.venueName && (
+            <Button onClick={() => onCheckInHere(event.venueName)} style={{ padding: "7px 10px", fontSize: 11.5 }}>
+              📍 check in there
+            </Button>
+          )}
+          <Button
+            variant={mine ? "primary" : "ghost"}
+            accent="#FF3D9A"
+            onClick={() => onToggleInterest(event.id, event.title)}
+            style={{ padding: "7px 10px", fontSize: 11.5 }}
+          >
+            🙋 {mine ? "you're interested" : "I'm interested"}
+          </Button>
+
+          {crews && crews.length > 0 && (
+            called ? (
+              <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: "#FF3D9A", fontWeight: 700 }}>📣 crew called!</div>
+            ) : pickingCrew ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted, marginBottom: 2 }}>call which crew?</div>
+                {crews.map((c) => (
+                  <Button
+                    key={c.id}
+                    variant="ghost"
+                    onClick={() => { onCallCrew(c.id, { id: null, name: event.title }, event.id); setCalled(true); setPickingCrew(false); }}
+                    style={{ padding: "7px 10px", fontSize: 11.5, textAlign: "left" }}
+                  >
+                    {c.name}
+                  </Button>
+                ))}
+              </div>
+            ) : (
+              <Button
+                variant="ghost"
+                onClick={() =>
+                  crews.length === 1
+                    ? (onCallCrew(crews[0].id, { id: null, name: event.title }, event.id), setCalled(true))
+                    : setPickingCrew(true)
+                }
+                style={{ padding: "7px 10px", fontSize: 11.5 }}
+              >
+                📣 call the crew to check interest
+              </Button>
+            )
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BottomNav({ view, onNavigate }) {
   const items = [
     { id: "feed", label: "Feed", emoji: "🌆" },
@@ -1351,6 +1444,44 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
     };
   }, [eventsGeo.status, eventsGeo.coords, eventsRetryCount]);
 
+  // Who's interested in which nearby event — loaded for whatever's currently
+  // fetched, kept as a simple map so both the event cards and the crew-call
+  // banner below can read/update the same counts.
+  const [interestByEvent, setInterestByEvent] = useState({});
+
+  useEffect(() => {
+    if (events.length === 0) return;
+    let cancelled = false;
+    supabase
+      .from("event_interest")
+      .select("event_id, user_id")
+      .in("event_id", events.map((e) => e.id))
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        const map = {};
+        data.forEach((row) => {
+          if (!map[row.event_id]) map[row.event_id] = { count: 0, mine: false };
+          map[row.event_id].count += 1;
+          if (row.user_id === myId) map[row.event_id].mine = true;
+        });
+        setInterestByEvent(map);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [events, myId]);
+
+  const toggleInterest = async (eventId, eventTitle) => {
+    const current = interestByEvent[eventId] || { count: 0, mine: false };
+    if (current.mine) {
+      await supabase.from("event_interest").delete().eq("event_id", eventId).eq("user_id", myId);
+      setInterestByEvent((m) => ({ ...m, [eventId]: { count: Math.max(0, current.count - 1), mine: false } }));
+    } else {
+      await supabase.from("event_interest").insert({ event_id: eventId, event_title: eventTitle, user_id: myId, user_name: myName });
+      setInterestByEvent((m) => ({ ...m, [eventId]: { count: current.count + 1, mine: true } }));
+    }
+  };
+
   const filteredEvents = events
     .filter((e) => eventCategory === "all" || e.category === eventCategory)
     .filter((e) => !eventQuery.trim() || e.title.toLowerCase().includes(eventQuery.trim().toLowerCase()));
@@ -1418,6 +1549,7 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
         <div style={{ marginBottom: 14 }}>
           {crewCalls.map((call) => {
             const crewName = (crews.find((c) => c.id === call.crew_id) || {}).name || "your crew";
+            const isEventCall = !call.venue_id && call.event_id;
             return (
               <div
                 key={call.id}
@@ -1430,17 +1562,34 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
                 }}
               >
                 <div style={{ fontFamily: bodyFont, fontSize: 13, color: colors.text, marginBottom: 8, lineHeight: 1.4 }}>
-                  📣 <strong>{call.from_user_name}</strong> is calling on <strong>{crewName}</strong> to go to{" "}
-                  <strong>{call.venue_name}</strong>
+                  📣 <strong>{call.from_user_name}</strong> is calling on <strong>{crewName}</strong>{" "}
+                  {isEventCall ? (
+                    <>
+                      to check interest in <strong>{call.venue_name}</strong>
+                    </>
+                  ) : (
+                    <>
+                      to go to <strong>{call.venue_name}</strong>
+                    </>
+                  )}
                 </div>
-                <Button
-                  onClick={() =>
-                    onCheckInHere({ id: call.venue_id, name: call.venue_name, lat: null, lng: null, osm_website: null })
-                  }
-                  style={{ padding: "8px 14px", fontSize: 12 }}
-                >
-                  check in here too
-                </Button>
+                {isEventCall ? (
+                  <Button
+                    onClick={() => toggleInterest(call.event_id, call.venue_name)}
+                    style={{ padding: "8px 14px", fontSize: 12 }}
+                  >
+                    🙋 I'm interested too
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={() =>
+                      onCheckInHere({ id: call.venue_id, name: call.venue_name, lat: null, lng: null, osm_website: null })
+                    }
+                    style={{ padding: "8px 14px", fontSize: 12 }}
+                  >
+                    check in here too
+                  </Button>
+                )}
               </div>
             );
           })}
@@ -1553,22 +1702,16 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
           ) : (
             <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
               {filteredEvents.map((e) => {
-                const cat = EVENT_CATEGORY[e.category] || { emoji: "📅", label: e.category };
                 return (
-                  <div
+                  <EventCard
                     key={e.id}
-                    style={{ flex: "0 0 auto", minWidth: 160, maxWidth: 190, background: colors.surfaceRaised, border: `1px solid ${colors.line}`, borderRadius: 10, padding: "10px 12px" }}
-                  >
-                    <div style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 12.5, color: colors.text, marginBottom: 4, lineHeight: 1.3 }}>
-                      {cat.emoji} {e.title}
-                    </div>
-                    <div style={{ fontFamily: monoFont, fontSize: 10, color: "#FF3D9A", marginBottom: 2 }}>{formatEventDate(e.start)}</div>
-                    {e.venueName && (
-                      <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: colors.textMuted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        📍 {e.venueName}
-                      </div>
-                    )}
-                  </div>
+                    event={e}
+                    interest={interestByEvent[e.id]}
+                    onToggleInterest={toggleInterest}
+                    onCheckInHere={onStartCheckinAt}
+                    crews={crews}
+                    onCallCrew={onCallCrew}
+                  />
                 );
               })}
             </div>
@@ -2000,7 +2143,7 @@ export default function App() {
     loadStats();
   };
 
-  const callTheCrew = async (crewId, venue) => {
+  const callTheCrew = async (crewId, venue, eventId) => {
     try {
       const expiresAt = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
       await supabase.from("crew_calls").insert({
@@ -2009,6 +2152,7 @@ export default function App() {
         from_user_name: profile.name,
         venue_id: venue.id || null,
         venue_name: venue.name,
+        event_id: eventId || null,
         expires_at: expiresAt,
       });
     } catch (e) {
