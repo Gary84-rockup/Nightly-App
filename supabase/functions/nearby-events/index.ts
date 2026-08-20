@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
       category: CATEGORIES,
       "active.gte": now,
       sort: "start",
-      limit: "15",
+      limit: "50",
     });
 
     const res = await fetch(`https://api.predicthq.com/v1/events/?${params}`, {

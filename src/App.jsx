@@ -64,10 +64,10 @@ function formatDistance(m) {
 }
 
 const EVENT_CATEGORY = {
-  concerts: { emoji: "🎤", label: "gig" },
-  festivals: { emoji: "🎪", label: "festival" },
-  community: { emoji: "🎉", label: "community" },
-  "performing-arts": { emoji: "🎭", label: "show" },
+  concerts: { emoji: "🎤", label: "Live Music" },
+  festivals: { emoji: "🎪", label: "Festivals" },
+  community: { emoji: "🎉", label: "Community" },
+  "performing-arts": { emoji: "🎭", label: "Shows" },
 };
 
 function formatEventDate(iso) {
@@ -1319,6 +1319,8 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
   const [events, setEvents] = useState([]);
   const [eventsStatus, setEventsStatus] = useState("idle");
   const [eventsRetryCount, setEventsRetryCount] = useState(0);
+  const [eventCategory, setEventCategory] = useState("all");
+  const [eventQuery, setEventQuery] = useState("");
   const eventsGeo = useGeolocation();
 
   useEffect(() => {
@@ -1348,6 +1350,10 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
       cancelled = true;
     };
   }, [eventsGeo.status, eventsGeo.coords, eventsRetryCount]);
+
+  const filteredEvents = events
+    .filter((e) => eventCategory === "all" || e.category === eventCategory)
+    .filter((e) => !eventQuery.trim() || e.title.toLowerCase().includes(eventQuery.trim().toLowerCase()));
 
   const favoriteGroups = Array.from(favoriteIds)
     .map((venueId) => {
@@ -1497,27 +1503,76 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
           <div style={{ fontFamily: monoFont, fontSize: 10, letterSpacing: "0.08em", color: colors.textMuted, textTransform: "uppercase", marginBottom: 8 }}>
             🎫 on nearby
           </div>
-          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
-            {events.map((e) => {
-              const cat = EVENT_CATEGORY[e.category] || { emoji: "📅", label: e.category };
-              return (
-                <div
-                  key={e.id}
-                  style={{ flex: "0 0 auto", minWidth: 160, maxWidth: 190, background: colors.surfaceRaised, border: `1px solid ${colors.line}`, borderRadius: 10, padding: "10px 12px" }}
-                >
-                  <div style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 12.5, color: colors.text, marginBottom: 4, lineHeight: 1.3 }}>
-                    {cat.emoji} {e.title}
-                  </div>
-                  <div style={{ fontFamily: monoFont, fontSize: 10, color: "#FF3D9A", marginBottom: 2 }}>{formatEventDate(e.start)}</div>
-                  {e.venueName && (
-                    <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: colors.textMuted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      📍 {e.venueName}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+
+          <input
+            value={eventQuery}
+            onChange={(e) => setEventQuery(e.target.value)}
+            placeholder="search gigs, festivals, shows..."
+            style={{
+              width: "100%",
+              padding: "9px 12px",
+              borderRadius: 10,
+              border: `1px solid ${colors.line}`,
+              background: colors.surface,
+              color: colors.text,
+              fontFamily: bodyFont,
+              fontSize: 12.5,
+              marginBottom: 8,
+              boxSizing: "border-box",
+            }}
+          />
+
+          <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+            {[
+              { id: "all", emoji: "🎫", label: "All" },
+              ...Object.entries(EVENT_CATEGORY).map(([id, c]) => ({ id, emoji: c.emoji, label: c.label })),
+            ].map((c) => (
+              <button
+                key={c.id}
+                onClick={() => setEventCategory(c.id)}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 10,
+                  border: `1px solid ${eventCategory === c.id ? "#FF3D9A" : colors.line}`,
+                  background: eventCategory === c.id ? "#FF3D9A22" : "transparent",
+                  color: eventCategory === c.id ? "#FF3D9A" : colors.textMuted,
+                  fontFamily: bodyFont,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {c.emoji} {c.label}
+              </button>
+            ))}
           </div>
+
+          {filteredEvents.length === 0 ? (
+            <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted }}>nothing matching nearby right now.</div>
+          ) : (
+            <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+              {filteredEvents.map((e) => {
+                const cat = EVENT_CATEGORY[e.category] || { emoji: "📅", label: e.category };
+                return (
+                  <div
+                    key={e.id}
+                    style={{ flex: "0 0 auto", minWidth: 160, maxWidth: 190, background: colors.surfaceRaised, border: `1px solid ${colors.line}`, borderRadius: 10, padding: "10px 12px" }}
+                  >
+                    <div style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 12.5, color: colors.text, marginBottom: 4, lineHeight: 1.3 }}>
+                      {cat.emoji} {e.title}
+                    </div>
+                    <div style={{ fontFamily: monoFont, fontSize: 10, color: "#FF3D9A", marginBottom: 2 }}>{formatEventDate(e.start)}</div>
+                    {e.venueName && (
+                      <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: colors.textMuted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        📍 {e.venueName}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
