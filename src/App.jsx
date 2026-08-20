@@ -290,64 +290,22 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presetVenue]);
 
-  // Nearby bars/pubs/clubs via Overpass (OSM), once we have a location — lets people tap instead of typing.
+  // Nearby bars/pubs/clubs via a Geoapify-backed Edge Function (still OSM
+  // data underneath, but hosted with an uptime SLA instead of the free
+  // public Overpass endpoints, which proved unreliable in production).
   useEffect(() => {
     if (presetVenue || geo.status !== "granted" || !geo.coords) return;
     let cancelled = false;
     setNearbyStatus("loading");
     const { lat, lng } = geo.coords;
-    const q = `[out:json][timeout:8];(node["amenity"~"^(bar|pub|nightclub)$"](around:2000,${lat},${lng});way["amenity"~"^(bar|pub|nightclub)$"](around:2000,${lat},${lng}););out center 20;`;
-    const endpoints = [
-      `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`,
-      `https://overpass.kumi.systems/api/interpreter?data=${encodeURIComponent(q)}`,
-    ];
 
-    // The free public Overpass endpoints have no reliability guarantee and can hang or sit
-    // behind a slow gateway for a minute or more under load — without a client-side timeout,
-    // a fetch that never settles leaves the UI stuck on "looking for nearby spots…" forever,
-    // which looks identical to broken. Fail each attempt fast and move on.
-    const fetchWithTimeout = async (url, ms) => {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), ms);
-      try {
-        const res = await fetch(url, { signal: controller.signal });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.json();
-      } finally {
-        clearTimeout(timer);
-      }
-    };
-
-    const tryFetch = async () => {
-      let lastErr;
-      for (const url of endpoints) {
-        try {
-          return await fetchWithTimeout(url, 7000);
-        } catch (e) {
-          lastErr = e;
-        }
-      }
-      throw lastErr;
-    };
-
-    tryFetch()
-      .then((data) => {
+    supabase.functions
+      .invoke("nearby-venues", { body: { lat, lng } })
+      .then(({ data, error }) => {
         if (cancelled) return;
-        const results = (data.elements || [])
-          .map((el) => {
-            const elLat = el.lat ?? el.center?.lat;
-            const elLng = el.lon ?? el.center?.lon;
-            const name = el.tags?.name;
-            if (!name || elLat == null || elLng == null) return null;
-            return {
-              name,
-              lat: elLat,
-              lng: elLng,
-              website: el.tags?.website || el.tags?.["contact:website"] || null,
-              distance: distanceMeters(lat, lng, elLat, elLng),
-            };
-          })
-          .filter(Boolean)
+        if (error) throw error;
+        const results = (data.venues || [])
+          .map((v) => ({ ...v, distance: distanceMeters(lat, lng, v.lat, v.lng) }))
           .sort((a, b) => a.distance - b.distance)
           .slice(0, 8);
         setNearby(results);
