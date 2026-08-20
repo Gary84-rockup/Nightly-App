@@ -1414,6 +1414,7 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
   const [eventsRetryCount, setEventsRetryCount] = useState(0);
   const [eventCategory, setEventCategory] = useState("all");
   const [eventQuery, setEventQuery] = useState("");
+  const [eventsExpanded, setEventsExpanded] = useState(false);
   const eventsGeo = useGeolocation();
 
   useEffect(() => {
@@ -1649,72 +1650,82 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
       )}
       {eventsGeo.status === "granted" && events.length > 0 && (
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontFamily: monoFont, fontSize: 10, letterSpacing: "0.08em", color: colors.textMuted, textTransform: "uppercase", marginBottom: 8 }}>
-            🎫 on nearby
-          </div>
-
-          <input
-            value={eventQuery}
-            onChange={(e) => setEventQuery(e.target.value)}
-            placeholder="search gigs, festivals, shows..."
-            style={{
-              width: "100%",
-              padding: "9px 12px",
-              borderRadius: 10,
-              border: `1px solid ${colors.line}`,
-              background: colors.surface,
-              color: colors.text,
-              fontFamily: bodyFont,
-              fontSize: 12.5,
-              marginBottom: 8,
-              boxSizing: "border-box",
-            }}
-          />
-
-          <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-            {[
-              { id: "all", emoji: "🎫", label: "All" },
-              ...Object.entries(EVENT_CATEGORY).map(([id, c]) => ({ id, emoji: c.emoji, label: c.label })),
-            ].map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setEventCategory(c.id)}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 10,
-                  border: `1px solid ${eventCategory === c.id ? "#FF3D9A" : colors.line}`,
-                  background: eventCategory === c.id ? "#FF3D9A22" : "transparent",
-                  color: eventCategory === c.id ? "#FF3D9A" : colors.textMuted,
-                  fontFamily: bodyFont,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {c.emoji} {c.label}
-              </button>
-            ))}
-          </div>
-
-          {filteredEvents.length === 0 ? (
-            <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted }}>nothing matching nearby right now.</div>
-          ) : (
-            <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
-              {filteredEvents.map((e) => {
-                return (
-                  <EventCard
-                    key={e.id}
-                    event={e}
-                    interest={interestByEvent[e.id]}
-                    onToggleInterest={toggleInterest}
-                    onCheckInHere={onStartCheckinAt}
-                    crews={crews}
-                    onCallCrew={onCallCrew}
-                  />
-                );
-              })}
+          <div
+            onClick={() => setEventsExpanded((v) => !v)}
+            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", marginBottom: eventsExpanded ? 8 : 0 }}
+          >
+            <div style={{ fontFamily: monoFont, fontSize: 10, letterSpacing: "0.08em", color: colors.textMuted, textTransform: "uppercase" }}>
+              🎫 {events.length} event{events.length === 1 ? "" : "s"} nearby
             </div>
+            <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted }}>{eventsExpanded ? "▲" : "▼"}</div>
+          </div>
+
+          {eventsExpanded && (
+            <>
+              <input
+                value={eventQuery}
+                onChange={(e) => setEventQuery(e.target.value)}
+                placeholder="search gigs, festivals, shows..."
+                style={{
+                  width: "100%",
+                  padding: "9px 12px",
+                  borderRadius: 10,
+                  border: `1px solid ${colors.line}`,
+                  background: colors.surface,
+                  color: colors.text,
+                  fontFamily: bodyFont,
+                  fontSize: 12.5,
+                  marginBottom: 8,
+                  boxSizing: "border-box",
+                }}
+              />
+
+              <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+                {[
+                  { id: "all", emoji: "🎫", label: "All" },
+                  ...Object.entries(EVENT_CATEGORY).map(([id, c]) => ({ id, emoji: c.emoji, label: c.label })),
+                ].map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => setEventCategory(c.id)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 10,
+                      border: `1px solid ${eventCategory === c.id ? "#FF3D9A" : colors.line}`,
+                      background: eventCategory === c.id ? "#FF3D9A22" : "transparent",
+                      color: eventCategory === c.id ? "#FF3D9A" : colors.textMuted,
+                      fontFamily: bodyFont,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {c.emoji} {c.label}
+                  </button>
+                ))}
+              </div>
+
+              {filteredEvents.length === 0 ? (
+                <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted }}>nothing matching nearby right now.</div>
+              ) : (
+                <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+                  {filteredEvents.map((e) => {
+                    return (
+                      <EventCard
+                        key={e.id}
+                        event={e}
+                        interest={interestByEvent[e.id]}
+                        onToggleInterest={toggleInterest}
+                        onCheckInHere={onStartCheckinAt}
+                        crews={crews}
+                        onCallCrew={onCallCrew}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
