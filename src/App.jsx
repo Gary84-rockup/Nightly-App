@@ -207,6 +207,15 @@ function isStandaloneDisplay() {
 }
 
 async function subscribeToPush(supabaseClient, userId) {
+  // Apple restricts the Push/Notification APIs entirely to standalone
+  // (installed) mode on iOS — a real platform rule, not a bug (see
+  // PUSH-NOTIFICATIONS-SETUP.md). Tapping "install app" doesn't switch the
+  // *current* tab into standalone mode; the icon has to actually be
+  // relaunched from the home screen first. Checked first since it's the
+  // most common reason this silently fails for people who just installed.
+  if (isIOSDevice() && !isStandaloneDisplay()) {
+    throw new Error("not-standalone");
+  }
   const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
   if (!vapidKey) throw new Error("VITE_VAPID_PUBLIC_KEY isn't set — see PUSH-NOTIFICATIONS-SETUP.md");
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
@@ -2928,7 +2937,16 @@ export default function App() {
       setNotifStatus("granted");
     } catch (e) {
       setNotifStatus("Notification" in window ? Notification.permission : "unsupported");
-      setNotifError(e.message === "permission-denied" ? "notifications blocked — enable them in your browser/phone settings" : "couldn't turn on notifications — try again");
+      if (e.message === "not-standalone") {
+        setNotifError("almost there — close this tab, then open Nightly from the icon on your home screen and try again");
+      } else if (e.message === "permission-denied") {
+        setNotifError("notifications blocked — enable them in your browser/phone settings");
+      } else {
+        // Surfaces the real reason (e.g. an unexpected Supabase or Push API
+        // error) instead of a generic message — this is exactly the kind of
+        // failure that's otherwise invisible until someone reports it.
+        setNotifError(`couldn't turn on notifications — ${e.message || "try again"}`);
+      }
     } finally {
       setNotifBusy(false);
     }
