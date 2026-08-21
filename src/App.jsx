@@ -840,7 +840,12 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
       {expanded && (
         <div style={{ marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
           {group.checkins.map((c) => {
-            const isFriend = friendIds && friendIds.has(c.user_id);
+            const friendProfile = friendIds && friendIds.get(c.user_id);
+            const isFriend = !!friendProfile;
+            const isMe = c.user_id === myId;
+            // Friends see who's checked in (photo + name); everyone else sees the
+            // check-in itself (vibe, genre, note) without knowing whose it is.
+            const identityVisible = isFriend || isMe;
             return (
               <div
                 key={c.id}
@@ -848,22 +853,26 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
                   fontFamily: bodyFont,
                   fontSize: 12,
                   color: colors.text,
-                  marginBottom: 4,
+                  marginBottom: 6,
                   fontWeight: isFriend ? 700 : 500,
                   background: isFriend ? "#FFC24B22" : "transparent",
                   borderRadius: 6,
                   padding: isFriend ? "3px 6px" : 0,
                 }}
               >
-                {isFriend && <span style={{ marginRight: 4 }}>👋</span>}
-                <span style={{ color: VIBES[c.vibe].color }}>{VIBES[c.vibe].emoji}</span> {c.user_name}
-                {c.genre && GENRE_TAGS[c.genre] && (
-                  <span style={{ color: "#FF3D9A", fontSize: 10.5, marginLeft: 4 }}>
-                    · {GENRE_TAGS[c.genre].emoji} {GENRE_TAGS[c.genre].label}
-                  </span>
-                )}
-                {isFriend && <span style={{ color: "#FFC24B", fontSize: 10, marginLeft: 4 }}>· friend</span>}
-                {c.note ? <span style={{ color: colors.textMuted }}> — "{c.note}"</span> : null}
+                <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                  {isFriend && <Avatar url={friendProfile.avatar_url} name={friendProfile.name} size={18} />}
+                  {isFriend && <span>👋</span>}
+                  <span style={{ color: VIBES[c.vibe].color }}>{VIBES[c.vibe].emoji}</span>
+                  <span>{identityVisible ? c.user_name : "someone"}</span>
+                  {c.genre && GENRE_TAGS[c.genre] && (
+                    <span style={{ color: "#FF3D9A", fontSize: 10.5 }}>
+                      · {GENRE_TAGS[c.genre].emoji} {GENRE_TAGS[c.genre].label}
+                    </span>
+                  )}
+                  {isFriend && <span style={{ color: "#FFC24B", fontSize: 10 }}>· friend</span>}
+                </div>
+                {c.note ? <div style={{ color: colors.textMuted, marginTop: 2 }}>"{c.note}"</div> : null}
                 {c.photo_url && (
                   <div style={{ marginTop: 6 }}>
                     <a href={c.photo_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
@@ -3012,7 +3021,7 @@ export default function App() {
                   venues={venues}
                   favoriteIds={favoriteIds}
                   onToggleFavorite={toggleFavorite}
-                  friendIds={new Set(friends.map((f) => f.id))}
+                  friendIds={new Map(friends.map((f) => [f.id, f]))}
                   crews={crews}
                   onCallCrew={callTheCrew}
                   crewCalls={crewCalls}
