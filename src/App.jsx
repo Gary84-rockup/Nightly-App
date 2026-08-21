@@ -583,7 +583,7 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
   );
 }
 
-function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVibe, defaultExpanded, isFavorite, onToggleFavorite, friendIds, crews, onCallCrew }) {
+function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVibe, defaultExpanded, isFavorite, onToggleFavorite, friendIds, crews, onCallCrew, distance }) {
   const [pickingCrew, setPickingCrew] = useState(false);
   const [called, setCalled] = useState(false);
   const [expanded, setExpanded] = useState(!!defaultExpanded);
@@ -612,13 +612,15 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
-          <button
-            onClick={(e) => { e.stopPropagation(); onToggleFavorite(group.venue.id); }}
-            style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 16, flexShrink: 0 }}
-            aria-label="Toggle favourite"
-          >
-            {isFavorite ? "⭐" : "☆"}
-          </button>
+          {group.venue.id && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onToggleFavorite(group.venue.id); }}
+              style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 16, flexShrink: 0 }}
+              aria-label="Toggle favourite"
+            >
+              {isFavorite ? "⭐" : "☆"}
+            </button>
+          )}
           <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 17, color: colors.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {group.venue.name}
           </div>
@@ -647,6 +649,7 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
       )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.textMuted, fontWeight: 600 }}>
+          {distance != null && `📍 ${formatDistance(distance)} · `}
           {group.checkins.length === 0
             ? "nobody's checked in — be the first"
             : `🎉 ${group.checkins.length} ${group.checkins.length === 1 ? "person" : "people"} here right now`}
@@ -763,7 +766,7 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
   );
 }
 
-function EventCard({ event, interest, onToggleInterest, onCheckInHere, crews, onCallCrew }) {
+function EventCard({ event, interest, onToggleInterest, onCheckInHere, crews, onCallCrew, distance, fullWidth }) {
   const [expanded, setExpanded] = useState(false);
   const [pickingCrew, setPickingCrew] = useState(false);
   const [called, setCalled] = useState(false);
@@ -774,23 +777,37 @@ function EventCard({ event, interest, onToggleInterest, onCheckInHere, crews, on
   return (
     <div
       onClick={() => setExpanded((v) => !v)}
-      style={{
-        flex: "0 0 auto",
-        minWidth: 160,
-        maxWidth: expanded ? 240 : 190,
-        background: colors.surfaceRaised,
-        border: `1px solid ${mine ? "#FF3D9A88" : colors.line}`,
-        borderRadius: 10,
-        padding: "10px 12px",
-        cursor: "pointer",
-      }}
+      style={
+        fullWidth
+          ? {
+              background: colors.surfaceRaised,
+              border: `1px solid ${mine ? "#FF3D9A88" : colors.line}`,
+              borderRadius: 18,
+              padding: 16,
+              marginBottom: 14,
+              cursor: "pointer",
+            }
+          : {
+              flex: "0 0 auto",
+              minWidth: 160,
+              maxWidth: expanded ? 240 : 190,
+              background: colors.surfaceRaised,
+              border: `1px solid ${mine ? "#FF3D9A88" : colors.line}`,
+              borderRadius: 10,
+              padding: "10px 12px",
+              cursor: "pointer",
+            }
+      }
     >
       <div style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 12.5, color: colors.text, marginBottom: 4, lineHeight: 1.3 }}>
         {cat.emoji} {event.title}
       </div>
       <div style={{ fontFamily: monoFont, fontSize: 10, color: "#FF3D9A", marginBottom: 2 }}>{formatEventDate(event.start)}</div>
+      {distance != null && (
+        <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: colors.textMuted, marginBottom: 2 }}>📍 {formatDistance(distance)} away</div>
+      )}
       {event.venueName && (
-        <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: colors.textMuted, whiteSpace: expanded ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: colors.textMuted, whiteSpace: expanded || fullWidth ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           📍 {event.venueName}
         </div>
       )}
@@ -1453,20 +1470,20 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
   const [query, setQuery] = useState("");
   const [osmResults, setOsmResults] = useState([]);
   const [searching, setSearching] = useState(false);
-  const [sortMode, setSortMode] = useState("trending");
+  const [sortMode, setSortMode] = useState("closest");
   const [spotlightId, setSpotlightId] = useState(null);
   const [busyOnly, setBusyOnly] = useState(false);
   const [openLateOnly, setOpenLateOnly] = useState(false);
   const [events, setEvents] = useState([]);
   const [eventsStatus, setEventsStatus] = useState("idle");
   const [eventsRetryCount, setEventsRetryCount] = useState(0);
-  const [eventCategory, setEventCategory] = useState("all");
-  const [eventQuery, setEventQuery] = useState("");
-  const [eventsExpanded, setEventsExpanded] = useState(false);
-  const eventsGeo = useGeolocation();
+  const [discoveryVenues, setDiscoveryVenues] = useState([]);
+  const [discoveryStatus, setDiscoveryStatus] = useState("idle");
+  const [discoveryRetryCount, setDiscoveryRetryCount] = useState(0);
+  const geo = useGeolocation();
 
   useEffect(() => {
-    eventsGeo.request();
+    geo.request();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1474,11 +1491,11 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
   // Edge Function, same "device location in, results out" shape as the
   // near-you venue list on the check-in tab.
   useEffect(() => {
-    if (eventsGeo.status !== "granted" || !eventsGeo.coords) return;
+    if (geo.status !== "granted" || !geo.coords) return;
     let cancelled = false;
     setEventsStatus("loading");
     supabase.functions
-      .invoke("nearby-events", { body: { lat: eventsGeo.coords.lat, lng: eventsGeo.coords.lng } })
+      .invoke("nearby-events", { body: { lat: geo.coords.lat, lng: geo.coords.lng } })
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error) throw error;
@@ -1491,7 +1508,30 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
     return () => {
       cancelled = true;
     };
-  }, [eventsGeo.status, eventsGeo.coords, eventsRetryCount]);
+  }, [geo.status, geo.coords, eventsRetryCount]);
+
+  // Nearby bars/pubs/clubs via the same Geoapify-backed Edge Function used on the
+  // check-in tab's "near you" list — lets the feed surface real nearby venues even
+  // before anyone's checked in, instead of only ones that already have activity.
+  useEffect(() => {
+    if (geo.status !== "granted" || !geo.coords) return;
+    let cancelled = false;
+    setDiscoveryStatus("loading");
+    supabase.functions
+      .invoke("nearby-venues", { body: { lat: geo.coords.lat, lng: geo.coords.lng } })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) throw error;
+        setDiscoveryVenues(data.venues || []);
+        setDiscoveryStatus(data.venues?.length > 0 ? "done" : "empty");
+      })
+      .catch(() => {
+        if (!cancelled) setDiscoveryStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [geo.status, geo.coords, discoveryRetryCount]);
 
   // Who's interested in which nearby event — loaded for whatever's currently
   // fetched, kept as a simple map so both the event cards and the crew-call
@@ -1531,9 +1571,11 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
     }
   };
 
-  const filteredEvents = events
-    .filter((e) => eventCategory === "all" || e.category === eventCategory)
-    .filter((e) => !eventQuery.trim() || e.title.toLowerCase().includes(eventQuery.trim().toLowerCase()));
+  // Distance-to-me, shared by venues and events below — null (rather than Infinity)
+  // when either point is unknown, so "closest" sort can push it to the bottom
+  // instead of pretending it's right next to you.
+  const distanceTo = (lat, lng) =>
+    geo.coords && lat != null && lng != null ? distanceMeters(geo.coords.lat, geo.coords.lng, lat, lng) : null;
 
   const favoriteGroups = Array.from(favoriteIds)
     .map((venueId) => {
@@ -1542,24 +1584,68 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
       const venue = venues[venueId];
       return venue ? { venue, checkins: [] } : null;
     })
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((g) => ({ ...g, distance: distanceTo(g.venue.lat, g.venue.lng) }));
 
-  const nonFavoriteGroups = groups.filter((g) => !favoriteIds.has(g.venue.id));
+  // A venue someone's already checked into (real row in our `venues` table, sourced
+  // from OSM at check-in time) is always the authoritative version of that place —
+  // Geoapify's nearby list is only used to fill in gaps for places nobody's checked
+  // into yet, so the same physical venue should never show up as two cards.
+  const norm = (s) => (s || "").toLowerCase().trim();
+  const isSameVenue = (a, b) => {
+    if (norm(a.name) !== norm(b.name)) return false;
+    if (a.lat == null || b.lat == null) return true;
+    return distanceMeters(a.lat, a.lng, b.lat, b.lng) < 150;
+  };
 
-  const sorted = [...nonFavoriteGroups].sort((a, b) => {
-    if (sortMode === "newest") {
-      const aLatest = Math.max(...a.checkins.map((c) => new Date(c.created_at).getTime()));
-      const bLatest = Math.max(...b.checkins.map((c) => new Date(c.created_at).getTime()));
-      return bLatest - aLatest;
-    }
-    return b.checkins.length - a.checkins.length;
+  const nonFavoriteVenueGroups = groups
+    .filter((g) => !favoriteIds.has(g.venue.id))
+    .map((g) => ({ ...g, distance: distanceTo(g.venue.lat, g.venue.lng) }));
+
+  const discoveryGroups = discoveryVenues
+    .filter((v) => !groups.some((g) => isSameVenue(g.venue, v)))
+    .map((v) => ({
+      venue: { name: v.name, lat: v.lat, lng: v.lng, osm_website: v.website },
+      checkins: [],
+      distance: distanceTo(v.lat, v.lng),
+    }));
+
+  const venueItems = [...nonFavoriteVenueGroups, ...discoveryGroups].map((g) => ({
+    type: "venue",
+    key: g.venue.id || `discovery:${norm(g.venue.name)}:${g.venue.lat},${g.venue.lng}`,
+    distance: g.distance,
+    trendingScore: g.checkins.length,
+    recencyScore: g.checkins.length > 0 ? Math.max(...g.checkins.map((c) => new Date(c.created_at).getTime())) : 0,
+    matchesQuery: !query.trim() || g.venue.name.toLowerCase().includes(query.trim().toLowerCase()),
+    // Busy/open-late are venue-only concepts — a venue fails the filter (rather
+    // than being exempt) when it doesn't meet it, same as before this change.
+    passesFilters: (!busyOnly || g.checkins.length >= 3) && (!openLateOnly || isOpenLate(g.venue.opening_hours)),
+    group: g,
+  }));
+
+  const eventItems = events.map((e) => ({
+    type: "event",
+    key: e.id,
+    distance: distanceTo(e.lat, e.lng),
+    trendingScore: interestByEvent[e.id]?.count || 0,
+    recencyScore: -new Date(e.start).getTime(), // soonest-starting reads as "newest" for an event
+    matchesQuery: !query.trim() || e.title.toLowerCase().includes(query.trim().toLowerCase()),
+    passesFilters: !busyOnly && !openLateOnly,
+    event: e,
+  }));
+
+  const feedItems = [...venueItems, ...eventItems].filter((i) => i.matchesQuery && i.passesFilters);
+
+  feedItems.sort((a, b) => {
+    if (sortMode === "trending") return b.trendingScore - a.trendingScore;
+    if (sortMode === "newest") return b.recencyScore - a.recencyScore;
+    // closest — items with no known distance (location off, or no coords from
+    // the source) sink to the bottom rather than vanishing.
+    if (a.distance == null && b.distance == null) return 0;
+    if (a.distance == null) return 1;
+    if (b.distance == null) return -1;
+    return a.distance - b.distance;
   });
-
-  let filtered = query.trim()
-    ? sorted.filter((g) => g.venue.name.toLowerCase().includes(query.trim().toLowerCase()))
-    : sorted;
-  if (busyOnly) filtered = filtered.filter((g) => g.checkins.length >= 3);
-  if (openLateOnly) filtered = filtered.filter((g) => isOpenLate(g.venue.opening_hours));
 
   const spotlightGroup = spotlightId ? groups.find((g) => g.venue.id === spotlightId) : null;
 
@@ -1571,7 +1657,7 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
   };
 
   useEffect(() => {
-    if (filtered.length > 0 || query.trim().length < 3) {
+    if (feedItems.length > 0 || query.trim().length < 3) {
       setOsmResults([]);
       return;
     }
@@ -1590,7 +1676,7 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [query, filtered.length]);
+  }, [query, feedItems.length]);
 
   return (
     <div>
@@ -1682,99 +1768,25 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
         </div>
       )}
 
-      {eventsGeo.status === "granted" && eventsStatus === "loading" && (
-        <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 14 }}>looking for events nearby…</div>
+      {(geo.status === "idle" || geo.status === "loading") && (
+        <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 14 }}>
+          📍 finding what's near you…
+        </div>
       )}
-      {eventsGeo.status === "granted" && eventsStatus === "error" && (
+      {(geo.status === "denied" || geo.status === "unavailable" || geo.status === "unsupported") && (
+        <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 14, lineHeight: 1.4 }}>
+          📍 location's off — showing venues with activity only. turn it on for the full near-me feed.
+        </div>
+      )}
+      {geo.status === "granted" && (discoveryStatus === "error" || eventsStatus === "error") && (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 14 }}>
-          <span>couldn't load nearby events.</span>
+          <span>couldn't load everything nearby.</span>
           <button
-            onClick={() => setEventsRetryCount((c) => c + 1)}
+            onClick={() => { setDiscoveryRetryCount((c) => c + 1); setEventsRetryCount((c) => c + 1); }}
             style={{ background: "none", border: "none", color: "#34E4EA", fontSize: 11, fontFamily: bodyFont, cursor: "pointer", fontWeight: 700, padding: 0, marginLeft: 8, flexShrink: 0 }}
           >
             retry
           </button>
-        </div>
-      )}
-      {eventsGeo.status === "granted" && events.length > 0 && (
-        <div style={{ marginBottom: 16 }}>
-          <div
-            onClick={() => setEventsExpanded((v) => !v)}
-            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", marginBottom: eventsExpanded ? 8 : 0 }}
-          >
-            <div style={{ fontFamily: monoFont, fontSize: 10, letterSpacing: "0.08em", color: colors.textMuted, textTransform: "uppercase" }}>
-              🎫 {events.length} event{events.length === 1 ? "" : "s"} nearby
-            </div>
-            <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted }}>{eventsExpanded ? "▲" : "▼"}</div>
-          </div>
-
-          {eventsExpanded && (
-            <>
-              <input
-                value={eventQuery}
-                onChange={(e) => setEventQuery(e.target.value)}
-                placeholder="search gigs, festivals, shows..."
-                style={{
-                  width: "100%",
-                  padding: "9px 12px",
-                  borderRadius: 10,
-                  border: `1px solid ${colors.line}`,
-                  background: colors.surface,
-                  color: colors.text,
-                  fontFamily: bodyFont,
-                  fontSize: 12.5,
-                  marginBottom: 8,
-                  boxSizing: "border-box",
-                }}
-              />
-
-              <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-                {[
-                  { id: "all", emoji: "🎫", label: "All" },
-                  ...Object.entries(EVENT_CATEGORY).map(([id, c]) => ({ id, emoji: c.emoji, label: c.label })),
-                ].map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => setEventCategory(c.id)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: 10,
-                      border: `1px solid ${eventCategory === c.id ? "#FF3D9A" : colors.line}`,
-                      background: eventCategory === c.id ? "#FF3D9A22" : "transparent",
-                      color: eventCategory === c.id ? "#FF3D9A" : colors.textMuted,
-                      fontFamily: bodyFont,
-                      fontSize: 11,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {c.emoji} {c.label}
-                  </button>
-                ))}
-              </div>
-
-              {filteredEvents.length === 0 ? (
-                <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted }}>nothing matching nearby right now.</div>
-              ) : (
-                <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
-                  {filteredEvents.map((e) => {
-                    return (
-                      <EventCard
-                        key={e.id}
-                        event={e}
-                        interest={interestByEvent[e.id]}
-                        onToggleInterest={toggleInterest}
-                        onCheckInHere={onStartCheckinAt}
-                        crews={crews}
-                        onCallCrew={onCallCrew}
-                      />
-                    );
-                  })}
-                </div>
-              )}
-            </>
-          )}
         </div>
       )}
 
@@ -1797,6 +1809,7 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
               friendIds={friendIds}
               crews={crews}
               onCallCrew={onCallCrew}
+              distance={g.distance}
             />
           ))}
         </div>
@@ -1820,9 +1833,10 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
         }}
       />
 
-      {groups.length > 0 && (
+      {(groups.length > 0 || discoveryVenues.length > 0 || events.length > 0) && (
         <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
           {[
+            { id: "closest", label: "📍 Closest" },
             { id: "trending", label: "🔥 Trending" },
             { id: "newest", label: "🆕 Newest" },
           ].map((s) => (
@@ -1848,7 +1862,7 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
         </div>
       )}
 
-      {groups.length > 0 && (
+      {(groups.length > 0 || discoveryVenues.length > 0) && (
         <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
           {[
             { key: "busy", label: "👥 Busy (3+)", active: busyOnly, toggle: () => setBusyOnly((b) => !b) },
@@ -1876,21 +1890,23 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
         </div>
       )}
 
-      {query.trim() && filtered.length > 0 && (
+      {query.trim() && feedItems.length > 0 && (
         <div style={{ fontFamily: bodyFont, fontSize: 11, color: "#34E4EA", fontWeight: 600, marginBottom: 8 }}>
-          {filtered.length} spot{filtered.length === 1 ? "" : "s"} matching "{query}"
+          {feedItems.length} result{feedItems.length === 1 ? "" : "s"} matching "{query}"
         </div>
       )}
 
-      {filtered.length === 0 && groups.length > 0 && query.trim() && osmResults.length === 0 && !searching && (
+      {feedItems.length === 0 && query.trim() && osmResults.length === 0 && !searching && (
         <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.textMuted, marginBottom: 12 }}>
-          nobody's checked in there right now.
+          nothing nearby matching that.
         </div>
       )}
 
-      {filtered.length === 0 && groups.length === 0 && !query.trim() && (
+      {feedItems.length === 0 && !query.trim() && geo.status !== "loading" && geo.status !== "idle" && (
         <div style={{ padding: "40px 4px", textAlign: "center", color: colors.textMuted, fontSize: 13, lineHeight: 1.5 }}>
-          nobody's checked in yet. be the first — tap "check in" below.
+          {geo.status === "granted"
+            ? "nothing near you right now — be the first to check in."
+            : "nobody's checked in yet. be the first — tap \"check in\" below."}
         </div>
       )}
 
@@ -1926,22 +1942,37 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
       )}
 
       <div style={{ paddingBottom: 20 }}>
-        {filtered.map((g) => (
-          <VenueCard
-            key={g.venue.id}
-            group={g}
-            myName={myName}
-            myId={myId}
-            onCheckOut={onCheckOut}
-            onCheckInHere={onCheckInHere}
-            onUpdateVibe={onUpdateVibe}
-            isFavorite={false}
-            onToggleFavorite={onToggleFavorite}
-            friendIds={friendIds}
-            crews={crews}
-            onCallCrew={onCallCrew}
-          />
-        ))}
+        {feedItems.map((item) =>
+          item.type === "venue" ? (
+            <VenueCard
+              key={item.key}
+              group={item.group}
+              myName={myName}
+              myId={myId}
+              onCheckOut={onCheckOut}
+              onCheckInHere={onCheckInHere}
+              onUpdateVibe={onUpdateVibe}
+              isFavorite={false}
+              onToggleFavorite={onToggleFavorite}
+              friendIds={friendIds}
+              crews={crews}
+              onCallCrew={onCallCrew}
+              distance={item.distance}
+            />
+          ) : (
+            <EventCard
+              key={item.key}
+              event={item.event}
+              interest={interestByEvent[item.event.id]}
+              onToggleInterest={toggleInterest}
+              onCheckInHere={onStartCheckinAt}
+              crews={crews}
+              onCallCrew={onCallCrew}
+              distance={item.distance}
+              fullWidth
+            />
+          )
+        )}
       </div>
     </div>
   );

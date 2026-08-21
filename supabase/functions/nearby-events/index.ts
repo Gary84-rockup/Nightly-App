@@ -53,6 +53,11 @@ Deno.serve(async (req) => {
       category: e.category,
       start: e.start,
       startLocal: e.start_local,
+      // PredictHQ's own approximate geocode for the event, as [lon, lat] — used
+      // client-side to sort/merge events into the same distance-ranked feed as
+      // venues. Not always present (e.g. broader "community" listings).
+      lat: Array.isArray(e.location) ? e.location[1] : null,
+      lng: Array.isArray(e.location) ? e.location[0] : null,
       venueName: e.entities?.find((ent: any) => ent.type === "venue")?.name || null,
       address: e.entities?.find((ent: any) => ent.type === "venue")?.formatted_address || null,
       // PredictHQ prefixes every description with this boilerplate — strip it,
