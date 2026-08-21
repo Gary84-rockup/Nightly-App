@@ -1921,7 +1921,21 @@ function InstallCard({ installed, canInstall, isIOS, onInstall }) {
       </div>
       {showIOSSteps ? (
         <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.text, lineHeight: 1.6 }}>
-          tap <strong>share</strong> ⬆️ in Safari, then <strong>"add to home screen."</strong>
+          <strong>opened this from WhatsApp, Messages, or Instagram?</strong> tap{" "}
+          <strong>•••</strong> (or the share icon) up top first and choose{" "}
+          <strong>"open in safari."</strong> "add to home screen" only exists in real
+          Safari — it never shows up in another app's built-in browser, no matter
+          how far you scroll.
+          <br />
+          <br />
+          then, in Safari:
+          <br />
+          1. tap <strong>share</strong> ⬆️
+          <br />
+          2. don't see <strong>"add to home screen"</strong> in the first row? tap{" "}
+          <strong>"view more"</strong>
+          <br />
+          3. tap <strong>"add to home screen,"</strong> then <strong>"add"</strong>
         </div>
       ) : (
         <Button onClick={canInstall ? onInstall : () => setShowIOSSteps(true)} style={{ width: "100%" }}>
@@ -1937,22 +1951,41 @@ function InstallCard({ installed, canInstall, isIOS, onInstall }) {
 // surfacing this button on the hub, the first thing you see after logging
 // in, instead of leaving it buried a few taps deep on the Crew screen.
 function NotificationCard({ notifStatus, notifBusy, notifError, onEnable }) {
-  if (notifStatus === "granted" || notifStatus === "unsupported") return null;
+  // iOS Safari doesn't expose the Notification API at all outside standalone
+  // (home-screen-launched) mode — "Notification" in window is false, so
+  // notifStatus initializes as "unsupported" and this card would vanish
+  // entirely with no message, even though the real fix (open from the home
+  // screen icon) is one tap away. Found 2026-08-22: this is why real users
+  // had never subscribed at all — there may never have been a button to
+  // tap. Only bypass the hide-on-"unsupported" rule for this specific,
+  // recoverable iOS case; a genuinely unsupported desktop browser still
+  // gets no card, same as before.
+  const iosNeedsInstall = isIOSDevice() && !isStandaloneDisplay();
+  if (notifStatus === "granted") return null;
+  if (!iosNeedsInstall && notifStatus === "unsupported") return null;
 
   return (
     <div style={{ background: colors.surface, border: `1px solid ${colors.line}`, borderRadius: 14, padding: 14, marginBottom: 14 }}>
       <div style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 13, color: colors.text, marginBottom: 4 }}>
         🔔 don't miss a call
       </div>
-      <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 10, lineHeight: 1.4 }}>
-        turn on notifications so you know the moment someone calls the crew — even with the app closed.
-      </div>
-      {notifError && (
-        <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.danger, marginBottom: 8 }}>{notifError}</div>
+      {iosNeedsInstall ? (
+        <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, lineHeight: 1.4 }}>
+          on iPhone this only works once Nightly is added to your home screen — install it above, then close this tab and open Nightly from the icon to turn notifications on.
+        </div>
+      ) : (
+        <>
+          <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 10, lineHeight: 1.4 }}>
+            turn on notifications so you know the moment someone calls the crew — even with the app closed.
+          </div>
+          {notifError && (
+            <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.danger, marginBottom: 8 }}>{notifError}</div>
+          )}
+          <Button onClick={onEnable} disabled={notifBusy} style={{ width: "100%" }}>
+            {notifBusy ? "turning on…" : "turn on notifications"}
+          </Button>
+        </>
       )}
-      <Button onClick={onEnable} disabled={notifBusy} style={{ width: "100%" }}>
-        {notifBusy ? "turning on…" : "turn on notifications"}
-      </Button>
     </div>
   );
 }
