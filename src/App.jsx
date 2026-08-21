@@ -1431,7 +1431,7 @@ function EventCard({ event, interest, onToggleInterest, onCheckInHere, crews, on
 // at the cost of an extra tap back through the hub when hopping between
 // sections. Each tile/banner drills into its full screen via a back button
 // in the shared header (see App()).
-function HubScreen({ profile, stats, peopleOutCount, plansCount, crewsCount, friendsCount, onNavigate }) {
+function HubScreen({ profile, stats, peopleOutCount, plansCount, crewsCount, friendsCount, onNavigate, installed, canInstall, isIOS, onInstall, notifStatus, notifBusy, notifError, onEnableNotifications }) {
   const unlockedCount = BADGES.filter((b) => stats[b.statKey] >= b.target).length;
 
   const tiles = [
@@ -1443,6 +1443,9 @@ function HubScreen({ profile, stats, peopleOutCount, plansCount, crewsCount, fri
 
   return (
     <div style={{ padding: "4px 0 20px" }}>
+      <InstallCard installed={installed} canInstall={canInstall} isIOS={isIOS} onInstall={onInstall} />
+      <NotificationCard notifStatus={notifStatus} notifBusy={notifBusy} notifError={notifError} onEnable={onEnableNotifications} />
+
       <button
         onClick={() => onNavigate("you")}
         style={{
@@ -1507,25 +1510,6 @@ function CrewScreen({ crews, checkins, tonightCrew, setTonightCrew, onCreateCrew
   const [copied, setCopied] = useState(false);
   const [memberQuery, setMemberQuery] = useState("");
   const [memberResults, setMemberResults] = useState([]);
-  const [notifStatus, setNotifStatus] = useState(
-    "Notification" in window ? Notification.permission : "unsupported"
-  );
-  const [notifBusy, setNotifBusy] = useState(false);
-  const [notifError, setNotifError] = useState(null);
-
-  const enableNotifications = async () => {
-    setNotifBusy(true);
-    setNotifError(null);
-    try {
-      await subscribeToPush(supabase, myId);
-      setNotifStatus("granted");
-    } catch (e) {
-      setNotifStatus("Notification" in window ? Notification.permission : "unsupported");
-      setNotifError(e.message === "permission-denied" ? "notifications blocked — enable them in your browser/phone settings" : "couldn't turn on notifications — try again");
-    } finally {
-      setNotifBusy(false);
-    }
-  };
 
   const selected = crews.find((c) => c.id === selectedId);
 
@@ -1680,23 +1664,6 @@ function CrewScreen({ crews, checkins, tonightCrew, setTonightCrew, onCreateCrew
       <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 16, lineHeight: 1.4 }}>
         build a crew for tonight, save it, and check in together.
       </div>
-
-      {notifStatus !== "granted" && notifStatus !== "unsupported" && (
-        <div style={{ background: colors.surface, border: `1px solid ${colors.line}`, borderRadius: 14, padding: 14, marginBottom: 16 }}>
-          <div style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 13, color: colors.text, marginBottom: 4 }}>
-            🔔 don't miss a call
-          </div>
-          <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 10, lineHeight: 1.4 }}>
-            turn on notifications so you know the moment someone calls the crew — even with the app closed.
-          </div>
-          {notifError && (
-            <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.danger, marginBottom: 8 }}>{notifError}</div>
-          )}
-          <Button onClick={enableNotifications} disabled={notifBusy} style={{ width: "100%" }}>
-            {notifBusy ? "turning on…" : "turn on notifications"}
-          </Button>
-        </div>
-      )}
 
       {crews.length === 0 && (
         <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.textMuted, marginBottom: 16 }}>
@@ -1950,6 +1917,31 @@ function InstallCard({ installed, canInstall, isIOS, onInstall }) {
   );
 }
 
+// Browsers only honour a permission prompt triggered by a real click — there's
+// no way to pop the OS dialog itself on load — so "more automatic" means
+// surfacing this button on the hub, the first thing you see after logging
+// in, instead of leaving it buried a few taps deep on the Crew screen.
+function NotificationCard({ notifStatus, notifBusy, notifError, onEnable }) {
+  if (notifStatus === "granted" || notifStatus === "unsupported") return null;
+
+  return (
+    <div style={{ background: colors.surface, border: `1px solid ${colors.line}`, borderRadius: 14, padding: 14, marginBottom: 14 }}>
+      <div style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 13, color: colors.text, marginBottom: 4 }}>
+        🔔 don't miss a call
+      </div>
+      <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 10, lineHeight: 1.4 }}>
+        turn on notifications so you know the moment someone calls the crew — even with the app closed.
+      </div>
+      {notifError && (
+        <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.danger, marginBottom: 8 }}>{notifError}</div>
+      )}
+      <Button onClick={onEnable} disabled={notifBusy} style={{ width: "100%" }}>
+        {notifBusy ? "turning on…" : "turn on notifications"}
+      </Button>
+    </div>
+  );
+}
+
 function Avatar({ url, name, size = 28 }) {
   return (
     <div
@@ -2049,7 +2041,7 @@ function ProfileCard({ profile, onUpdateAvatar, onUpdateBio }) {
   );
 }
 
-function BadgesScreen({ stats, userEmail, onSaveAccount, onLogout, installed, canInstall, isIOS, onInstall, profile, onUpdateAvatar, onUpdateBio }) {
+function BadgesScreen({ stats, userEmail, onSaveAccount, onLogout, profile, onUpdateAvatar, onUpdateBio }) {
   const unlocked = BADGES.filter((b) => stats[b.statKey] >= b.target);
   const locked = BADGES.filter((b) => stats[b.statKey] < b.target);
   const nextBadge = locked.reduce(
@@ -2061,7 +2053,6 @@ function BadgesScreen({ stats, userEmail, onSaveAccount, onLogout, installed, ca
     <div style={{ padding: "20px 0 20px" }}>
       <ProfileCard profile={profile} onUpdateAvatar={onUpdateAvatar} onUpdateBio={onUpdateBio} />
       <AccountCard userEmail={userEmail} onSaveAccount={onSaveAccount} onLogout={onLogout} />
-      <InstallCard installed={installed} canInstall={canInstall} isIOS={isIOS} onInstall={onInstall} />
 
       <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
         <div style={{ flex: 1, background: colors.surface, borderRadius: 14, padding: 14, textAlign: "center" }}>
@@ -2922,6 +2913,27 @@ export default function App() {
     setInstallEvent(null);
   };
 
+  // Lives here (not on CrewScreen, where it used to be) so the hub can show
+  // it too — moved from being buried a few taps deep to the first thing you
+  // see after logging in.
+  const [notifStatus, setNotifStatus] = useState("Notification" in window ? Notification.permission : "unsupported");
+  const [notifBusy, setNotifBusy] = useState(false);
+  const [notifError, setNotifError] = useState(null);
+
+  const enableNotifications = async () => {
+    setNotifBusy(true);
+    setNotifError(null);
+    try {
+      await subscribeToPush(supabase, session.user.id);
+      setNotifStatus("granted");
+    } catch (e) {
+      setNotifStatus("Notification" in window ? Notification.permission : "unsupported");
+      setNotifError(e.message === "permission-denied" ? "notifications blocked — enable them in your browser/phone settings" : "couldn't turn on notifications — try again");
+    } finally {
+      setNotifBusy(false);
+    }
+  };
+
   // Keeps profile in sync with whichever account is currently active, and handles pending
   // invite links once a profile exists — runs on the first sign-in and again any time the
   // active user actually changes (not on routine token refreshes, hence keying off the id).
@@ -3484,6 +3496,14 @@ export default function App() {
                   plansCount={plans.length}
                   crewsCount={crews.length}
                   friendsCount={friends.length}
+                  installed={installed}
+                  canInstall={!!installEvent}
+                  isIOS={isIOSDevice()}
+                  onInstall={promptInstall}
+                  notifStatus={notifStatus}
+                  notifBusy={notifBusy}
+                  notifError={notifError}
+                  onEnableNotifications={enableNotifications}
                   onNavigate={(id) => {
                     if (id === "checkin") {
                       setPrefillVenue("");
@@ -3560,10 +3580,6 @@ export default function App() {
                   userEmail={session.user.email}
                   onSaveAccount={saveAccount}
                   onLogout={logout}
-                  installed={installed}
-                  canInstall={!!installEvent}
-                  isIOS={isIOSDevice()}
-                  onInstall={promptInstall}
                   profile={profile}
                   onUpdateAvatar={updateAvatar}
                   onUpdateBio={updateBio}
