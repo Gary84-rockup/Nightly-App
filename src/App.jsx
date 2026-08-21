@@ -101,6 +101,42 @@ function formatEventDate(iso) {
     " · " + d.toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit" });
 }
 
+// Local YYYY-MM-DD, not UTC — a plan for "Saturday" should mean Saturday
+// where the user actually is, not shifted by a UTC offset near midnight.
+function localDateStr(d) {
+  const yr = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${yr}-${mo}-${day}`;
+}
+
+// Quick-pick day chips for "make a plan" — Today/Tomorrow, then weekday + date
+// for the rest, so "this Saturday" reads correctly regardless of what day
+// it is when the app is opened.
+function nextDays(count) {
+  const days = [];
+  for (let i = 0; i < count; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() + i);
+    const label =
+      i === 0 ? "Today" : i === 1 ? "Tomorrow" : d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric" });
+    days.push({ date: localDateStr(d), label });
+  }
+  return days;
+}
+
+// "Today"/"Tomorrow"/weekday for a plan's date, same labels as nextDays above,
+// used to render a plan someone already posted.
+function formatPlanDate(dateStr) {
+  const todayStr = localDateStr(new Date());
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (dateStr === todayStr) return "Today";
+  if (dateStr === localDateStr(tomorrow)) return "Tomorrow";
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+}
+
 // Browser Geolocation API — no key required, but needs a user-permission grant and HTTPS (or localhost).
 function useGeolocation() {
   const [state, setState] = useState({ status: "idle", coords: null });
@@ -324,7 +360,12 @@ function compressImage(file, maxDimension = 1280, quality = 0.8) {
   });
 }
 
-function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonightCrew }) {
+function CheckInForm({ onCreate, onCreatePlan, onCancel, initialVenueQuery, presetVenue, tonightCrew }) {
+  // "right now" is a live check-in (existing flow, unchanged below); "planning
+  // ahead" posts a forward-looking plan instead — same venue search, but no
+  // vibe/duration/photo/crew (none of those make sense before you're there).
+  const [mode, setMode] = useState("now");
+  const [plannedDate, setPlannedDate] = useState(null);
   const [venueQuery, setVenueQuery] = useState(initialVenueQuery || "");
   const [venueResults, setVenueResults] = useState([]);
   const [selectedVenue, setSelectedVenue] = useState(
@@ -503,7 +544,37 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
 
   return (
     <div style={{ padding: "18px 20px 40px" }}>
-      <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 20, color: colors.text, marginBottom: 16 }}>check in</div>
+      <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 20, color: colors.text, marginBottom: 16 }}>
+        {mode === "now" ? "check in" : "make a plan"}
+      </div>
+
+      {!presetVenue && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
+          {[
+            { key: "now", label: "📍 right now" },
+            { key: "plan", label: "📅 planning ahead" },
+          ].map((m) => (
+            <button
+              key={m.key}
+              onClick={() => setMode(m.key)}
+              style={{
+                flex: 1,
+                padding: "9px 0",
+                borderRadius: 10,
+                border: `1px solid ${mode === m.key ? "#FF3D9A" : colors.line}`,
+                background: mode === m.key ? "#FF3D9A22" : "transparent",
+                color: mode === m.key ? "#FF3D9A" : colors.textMuted,
+                fontFamily: bodyFont,
+                fontSize: 12.5,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <label style={label}>venue</label>
       {presetVenue ? (
@@ -610,14 +681,18 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
         </>
       )}
 
-      <label style={label}>vibe right now</label>
-      <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-        {Object.entries(VIBES).map(([key, v]) => (
-          <Button key={key} variant={vibe === key ? "primary" : "ghost"} accent={v.color} onClick={() => setVibe(key)} style={{ flex: 1, minWidth: 70 }}>
-            {v.emoji} {v.label}
-          </Button>
-        ))}
-      </div>
+      {mode === "now" && (
+        <>
+          <label style={label}>vibe right now</label>
+          <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+            {Object.entries(VIBES).map(([key, v]) => (
+              <Button key={key} variant={vibe === key ? "primary" : "ghost"} accent={v.color} onClick={() => setVibe(key)} style={{ flex: 1, minWidth: 70 }}>
+                {v.emoji} {v.label}
+              </Button>
+            ))}
+          </div>
+        </>
+      )}
 
       <label style={label}>what's on? (optional)</label>
       <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
@@ -644,38 +719,68 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
       </div>
 
       <label style={label}>note (optional)</label>
-      <input style={{ ...inputStyle, marginBottom: 14 }} value={note} onChange={(e) => setNote(e.target.value)} placeholder="queue's short, DJ's good..." />
+      <input
+        style={{ ...inputStyle, marginBottom: 14 }}
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder={mode === "now" ? "queue's short, DJ's good..." : "SA vs All Blacks, kickoff 4pm..."}
+      />
 
-      <label style={label}>photo (optional)</label>
-      <input ref={photoInputRef} type="file" accept="image/*" onChange={pickPhoto} style={{ display: "none" }} />
-      <div style={{ marginBottom: 14 }}>
-        {photoPreview ? (
-          <div style={{ position: "relative", width: 96, height: 96 }}>
-            <img
-              src={photoPreview}
-              alt=""
-              style={{ width: 96, height: 96, borderRadius: 10, objectFit: "cover", border: `1px solid ${colors.line}` }}
-            />
-            <button
-              onClick={removePhoto}
-              aria-label="Remove photo"
-              style={{
-                position: "absolute", top: -8, right: -8, width: 24, height: 24, borderRadius: "50%",
-                background: colors.danger, border: `2px solid ${colors.bg}`, color: "#fff", fontSize: 12,
-                fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
-              }}
-            >
-              ✕
-            </button>
+      {mode === "now" && (
+        <>
+          <label style={label}>photo (optional)</label>
+          <input ref={photoInputRef} type="file" accept="image/*" onChange={pickPhoto} style={{ display: "none" }} />
+          <div style={{ marginBottom: 14 }}>
+            {photoPreview ? (
+              <div style={{ position: "relative", width: 96, height: 96 }}>
+                <img
+                  src={photoPreview}
+                  alt=""
+                  style={{ width: 96, height: 96, borderRadius: 10, objectFit: "cover", border: `1px solid ${colors.line}` }}
+                />
+                <button
+                  onClick={removePhoto}
+                  aria-label="Remove photo"
+                  style={{
+                    position: "absolute", top: -8, right: -8, width: 24, height: 24, borderRadius: "50%",
+                    background: colors.danger, border: `2px solid ${colors.bg}`, color: "#fff", fontSize: 12,
+                    fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <Button variant="ghost" onClick={() => photoInputRef.current?.click()} disabled={compressingPhoto} style={{ padding: "9px 14px", fontSize: 12.5 }}>
+                {compressingPhoto ? "processing…" : "📷 add a photo"}
+              </Button>
+            )}
+            {photoError && <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.danger, marginTop: 6 }}>{photoError}</div>}
           </div>
-        ) : (
-          <Button variant="ghost" onClick={() => photoInputRef.current?.click()} disabled={compressingPhoto} style={{ padding: "9px 14px", fontSize: 12.5 }}>
-            {compressingPhoto ? "processing…" : "📷 add a photo"}
-          </Button>
-        )}
-        {photoError && <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.danger, marginTop: 6 }}>{photoError}</div>}
-      </div>
+        </>
+      )}
 
+      {mode === "plan" && (
+        <>
+          <label style={label}>which day?</label>
+          <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
+            {nextDays(6).map((d) => (
+              <Button
+                key={d.date}
+                variant={plannedDate === d.date ? "primary" : "ghost"}
+                accent="#FF3D9A"
+                onClick={() => setPlannedDate(d.date)}
+                style={{ minWidth: 62 }}
+              >
+                {d.label}
+              </Button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {mode === "now" && (
+      <>
       <label style={label}>visible for</label>
       <div style={{ display: "flex", gap: 6, marginBottom: 20 }}>
         {[2, 3, 4].map((h) => (
@@ -704,26 +809,33 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
           <input type="checkbox" checked={includeCrew} onChange={(e) => setIncludeCrew(e.target.checked)} style={{ width: 18, height: 18 }} />
         </div>
       )}
+      </>
+      )}
 
       <div style={{ display: "flex", gap: 10 }}>
         <Button variant="ghost" onClick={onCancel} style={{ flex: 1 }}>cancel</Button>
         <Button
-          onClick={() =>
-            selectedVenue &&
-            onCreate({
-              venue: selectedVenue,
-              vibe,
-              genre,
-              note: note.trim(),
-              hours,
-              crewId: includeCrew && tonightCrew ? tonightCrew.id : null,
-              photoBlob,
-            })
-          }
-          disabled={!selectedVenue || compressingPhoto}
+          onClick={() => {
+            if (!selectedVenue) return;
+            if (mode === "plan") {
+              if (!plannedDate) return;
+              onCreatePlan({ venue: selectedVenue, genre, note: note.trim(), plannedDate });
+            } else {
+              onCreate({
+                venue: selectedVenue,
+                vibe,
+                genre,
+                note: note.trim(),
+                hours,
+                crewId: includeCrew && tonightCrew ? tonightCrew.id : null,
+                photoBlob,
+              });
+            }
+          }}
+          disabled={!selectedVenue || compressingPhoto || (mode === "plan" && !plannedDate)}
           style={{ flex: 2 }}
         >
-          check in
+          {mode === "plan" ? "add the plan" : "check in"}
         </Button>
       </div>
     </div>
@@ -991,6 +1103,59 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// A forward-looking "I'll be here" post — distinct from a live VenueCard
+// check-in (no vibe, no expiry, just an occasion + a day). Identity follows
+// the same friend-gated rule as check-ins: friends see the photo + name,
+// everyone else sees "someone" — the plan itself (venue, day, occasion,
+// interest count) stays visible regardless.
+function PlanCard({ plan, interest, onToggleInterest, friendIds, myId }) {
+  const friendProfile = friendIds && friendIds.get(plan.user_id);
+  const isFriend = !!friendProfile;
+  const isMe = plan.user_id === myId;
+  const identityVisible = isFriend || isMe;
+  const mine = interest?.mine;
+  const count = interest?.count || 0;
+
+  return (
+    <div
+      style={{
+        background: "linear-gradient(135deg, #14282e, #1A1226)",
+        border: `1px solid ${mine ? "#34E4EA88" : colors.line}`,
+        borderRadius: 14,
+        padding: 13,
+        marginBottom: 10,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
+        {isFriend && <Avatar url={friendProfile.avatar_url} name={friendProfile.name} size={20} />}
+        <span style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 13, color: colors.text }}>
+          {identityVisible ? plan.user_name : "someone"}
+        </span>
+        <span style={{ fontFamily: monoFont, fontSize: 10.5, color: "#34E4EA", fontWeight: 700 }}>
+          📅 {formatPlanDate(plan.planned_date)}
+        </span>
+        {plan.genre && GENRE_TAGS[plan.genre] && (
+          <span style={{ fontFamily: bodyFont, fontSize: 11, color: "#FF3D9A" }}>
+            {GENRE_TAGS[plan.genre].emoji} {GENRE_TAGS[plan.genre].label}
+          </span>
+        )}
+      </div>
+      <div style={{ fontFamily: bodyFont, fontSize: 13, color: colors.text, marginBottom: 8 }}>
+        📍 {plan.venue_name}
+        {plan.note ? <span style={{ color: colors.textMuted }}> — "{plan.note}"</span> : null}
+      </div>
+      <Button
+        variant={mine ? "primary" : "ghost"}
+        accent="#34E4EA"
+        onClick={() => onToggleInterest(plan.id)}
+        style={{ padding: "6px 12px", fontSize: 11.5 }}
+      >
+        🙋 {count > 0 ? `${count} · ` : ""}{mine ? "you're in" : "me too"}
+      </Button>
     </div>
   );
 }
@@ -1807,7 +1972,7 @@ function BadgesScreen({ stats, userEmail, onSaveAccount, onLogout, installed, ca
   );
 }
 
-function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, crews, onCallCrew, crewCalls, myName, myId, onCheckOut, onCheckInHere, onUpdateVibe, onStartCheckinAt, reactionsByCheckin, onToggleReaction }) {
+function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, crews, onCallCrew, crewCalls, myName, myId, onCheckOut, onCheckInHere, onUpdateVibe, onStartCheckinAt, reactionsByCheckin, onToggleReaction, plans }) {
   const [query, setQuery] = useState("");
   const [osmResults, setOsmResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -1910,6 +2075,42 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
     } else {
       await supabase.from("event_interest").insert({ event_id: eventId, event_title: eventTitle, user_id: myId, user_name: myName });
       setInterestByEvent((m) => ({ ...m, [eventId]: { count: current.count + 1, mine: true } }));
+    }
+  };
+
+  // "🙋 me too" on a friend's weekend plan — same shape as event interest above.
+  const [interestByPlan, setInterestByPlan] = useState({});
+
+  useEffect(() => {
+    if (plans.length === 0) return;
+    let cancelled = false;
+    supabase
+      .from("plan_interest")
+      .select("plan_id, user_id")
+      .in("plan_id", plans.map((p) => p.id))
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        const map = {};
+        data.forEach((row) => {
+          if (!map[row.plan_id]) map[row.plan_id] = { count: 0, mine: false };
+          map[row.plan_id].count += 1;
+          if (row.user_id === myId) map[row.plan_id].mine = true;
+        });
+        setInterestByPlan(map);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [plans, myId]);
+
+  const togglePlanInterest = async (planId) => {
+    const current = interestByPlan[planId] || { count: 0, mine: false };
+    if (current.mine) {
+      await supabase.from("plan_interest").delete().eq("plan_id", planId).eq("user_id", myId);
+      setInterestByPlan((m) => ({ ...m, [planId]: { count: Math.max(0, current.count - 1), mine: false } }));
+    } else {
+      await supabase.from("plan_interest").insert({ plan_id: planId, user_id: myId, user_name: myName });
+      setInterestByPlan((m) => ({ ...m, [planId]: { count: current.count + 1, mine: true } }));
     }
   };
 
@@ -2118,6 +2319,17 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
               </div>
             );
           })}
+        </div>
+      )}
+
+      {plans.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontFamily: monoFont, fontSize: 10, letterSpacing: "0.08em", color: colors.textMuted, textTransform: "uppercase", marginBottom: 8 }}>
+            📅 this weekend
+          </div>
+          {plans.map((p) => (
+            <PlanCard key={p.id} plan={p} interest={interestByPlan[p.id]} onToggleInterest={togglePlanInterest} friendIds={friendIds} myId={myId} />
+          ))}
         </div>
       )}
 
@@ -2406,6 +2618,7 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [checkins, setCheckins] = useState([]);
   const [reactionsByCheckin, setReactionsByCheckin] = useState({});
+  const [plans, setPlans] = useState([]);
   const [venues, setVenues] = useState({});
   const [favoriteIds, setFavoriteIds] = useState(new Set());
   const [crews, setCrews] = useState([]);
@@ -2561,6 +2774,16 @@ export default function App() {
     setCheckins(checkinData || []);
   }, []);
 
+  const loadPlans = useCallback(async () => {
+    const todayStr = localDateStr(new Date());
+    const { data } = await supabase
+      .from("plans")
+      .select("*")
+      .gte("planned_date", todayStr)
+      .order("planned_date", { ascending: true });
+    setPlans(data || []);
+  }, []);
+
   // Small-scale app (see project-notes.md) — loads every reaction rather than
   // scoping the query to whatever check-ins happen to be on screen, same
   // simplicity tradeoff as loadData() loading all check-ins.
@@ -2647,7 +2870,7 @@ export default function App() {
   }, [session]);
 
   useEffect(() => {
-    if (session) { loadData(); loadStats(); loadFavorites(); loadCrews(); loadFriends(); loadReactions(); }
+    if (session) { loadData(); loadStats(); loadFavorites(); loadCrews(); loadFriends(); loadReactions(); loadPlans(); }
   }, [session, loadData]);
 
   const toggleFavorite = async (venueId) => {
@@ -2767,10 +2990,11 @@ export default function App() {
       .on("postgres_changes", { event: "*", schema: "public", table: "venues" }, loadData)
       .on("postgres_changes", { event: "*", schema: "public", table: "crew_calls" }, () => loadCrewCalls())
       .on("postgres_changes", { event: "*", schema: "public", table: "checkin_reactions" }, () => loadReactions())
+      .on("postgres_changes", { event: "*", schema: "public", table: "plans" }, () => loadPlans())
       .subscribe();
     const interval = setInterval(loadData, 60000); // refresh every minute to drop expired check-ins
     return () => { supabase.removeChannel(channel); clearInterval(interval); };
-  }, [session, loadData, loadCrewCalls, loadReactions]);
+  }, [session, loadData, loadCrewCalls, loadReactions, loadPlans]);
 
   const handleSetName = async (name) => {
     setSettingUp(true);
@@ -2916,6 +3140,49 @@ export default function App() {
     }
   };
 
+  // "Make a plan" — a forward-looking "I'll be here" post, separate from a live
+  // check-in. Same venue-resolve-or-create step as checkIn() above (duplicated
+  // rather than shared, to keep this isolated from the live check-in path).
+  const createPlan = async (data) => {
+    try {
+      let venueId = data.venue.id || null;
+      if (!venueId) {
+        const { data: existingVenue } = await supabase
+          .from("venues")
+          .select("*")
+          .ilike("name", data.venue.name)
+          .maybeSingle();
+        if (existingVenue) {
+          venueId = existingVenue.id;
+        } else {
+          const { data: newVenue, error: venueErr } = await supabase
+            .from("venues")
+            .insert({ name: data.venue.name, lat: data.venue.lat, lng: data.venue.lng, osm_website: data.venue.website, opening_hours: data.venue.openingHours })
+            .select()
+            .single();
+          if (venueErr) throw venueErr;
+          venueId = newVenue.id;
+        }
+      }
+      const { error: planErr } = await supabase.from("plans").insert({
+        user_id: session.user.id,
+        user_name: profile.name,
+        venue_id: venueId,
+        venue_name: data.venue.name,
+        genre: data.genre || null,
+        note: data.note || null,
+        planned_date: data.plannedDate,
+      });
+      if (planErr) throw planErr;
+      setView("feed");
+      setPrefillVenue("");
+      setPresetVenue(null);
+      loadPlans();
+    } catch (e) {
+      setError("Couldn't save that plan — try again.");
+    }
+  };
+
   const checkOut = async (checkinId, photoUrl) => {
     const { error: delErr } = await supabase.from("checkins").delete().eq("id", checkinId);
     if (delErr) {
@@ -2976,6 +3243,7 @@ export default function App() {
               {view === "checkin" ? (
                 <CheckInForm
                   onCreate={checkIn}
+                  onCreatePlan={createPlan}
                   onCancel={() => { setPrefillVenue(""); setPresetVenue(null); setView("feed"); }}
                   initialVenueQuery={prefillVenue}
                   presetVenue={presetVenue}
@@ -3033,6 +3301,7 @@ export default function App() {
                   onCheckInHere={(venue) => { setPresetVenue(venue); setPrefillVenue(""); setView("checkin"); }}
                   reactionsByCheckin={reactionsByCheckin}
                   onToggleReaction={toggleReaction}
+                  plans={plans}
                 />
               )}
             </div>
