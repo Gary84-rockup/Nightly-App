@@ -7,7 +7,10 @@ const colors = {
   surfaceRaised: "#22182F",
   line: "#2E2140",
   text: "#F2EEFA",
-  textMuted: "#8C7FA8",
+  // Lightened from #8C7FA8 2026-08-21 — measured ~3.4:1 against several of the
+  // dark card backgrounds it sits on (below WCAG AA's 4.5:1 for text this small).
+  // #A79BC4 clears 6:1+ against bg/surface while staying clearly "muted".
+  textMuted: "#A79BC4",
   danger: "#C15B4A",
 };
 
@@ -15,7 +18,11 @@ const VIBES = {
   chill: { label: "Chill", color: "#34E4EA", emoji: "🌙", gradient: "linear-gradient(135deg, #14282e, #1A1226)" },
   busy: { label: "Busy", color: "#FFC24B", emoji: "🔥", gradient: "linear-gradient(135deg, #2e2414, #1A1226)" },
   lit: { label: "Lit", color: "#FF3D9A", emoji: "⚡", gradient: "linear-gradient(135deg, #2e1424, #1A1226)" },
-  dead: { label: "Dead", color: "#6B5F82", emoji: "💤", gradient: "linear-gradient(135deg, #1A1226, #1A1226)" },
+  // #6B5F82 (2026-08-21: lightened to #9187B0) measured ~3.4:1 as the pill's own
+  // background against its dark bg.color text — same fix as textMuted above, plus
+  // a two-tone gradient (was a flat single-color fill) so Dead/Quiet cards read as
+  // distinct cards rather than one undifferentiated dark block.
+  dead: { label: "Dead", color: "#9187B0", emoji: "💤", gradient: "linear-gradient(135deg, #221A33, #170F22)" },
 };
 
 // Curated reaction set for individual check-ins — deliberately fixed rather than a
@@ -710,7 +717,7 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
   const topVibeEntry = Object.entries(vibeCounts).sort((a, b) => b[1] - a[1])[0];
   const v = topVibeEntry
     ? VIBES[topVibeEntry[0]]
-    : { label: "Quiet for now", color: "#6B5F82", emoji: "🌑", gradient: "linear-gradient(135deg, #1A1226, #1A1226)" };
+    : { label: "Quiet for now", color: "#9187B0", emoji: "🌑", gradient: "linear-gradient(135deg, #221A33, #170F22)" };
   const mine = group.checkins.find((c) => c.user_id === myId);
   const isPumping = group.checkins.length >= 5;
 
