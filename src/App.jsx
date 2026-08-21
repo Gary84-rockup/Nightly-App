@@ -3440,8 +3440,14 @@ export default function App() {
     }
   };
 
+  // Expires the row rather than deleting it. loadData() already scopes "active"
+  // checkins by expires_at > now, so this has the exact same visible effect as
+  // a delete — but a hard delete was silently destroying badge/stats history
+  // (loadStats counts rows in this same table with no expiry filter), meaning
+  // nobody could ever actually earn a badge once they checked out. Found
+  // 2026-08-22 during a pre-weekend QA pass.
   const checkOut = async (checkinId, photoUrl) => {
-    const { error: delErr } = await supabase.from("checkins").delete().eq("id", checkinId);
+    const { error: delErr } = await supabase.from("checkins").update({ expires_at: new Date().toISOString() }).eq("id", checkinId);
     if (delErr) {
       setError("Couldn't check out — try again.");
       return;

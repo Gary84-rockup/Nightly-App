@@ -1,27 +1,24 @@
-# NIGHTLY — Web App (MVP)
+# NIGHTLY — Web App
 
-A separate app from Rock Up — a real-time "vibe check" for venues, based on the document Caitlyn sent. This is a first build covering the document's own Phase 1 "must-haves": venue check-ins, vibe tags, time-limited visibility, and an activity feed.
+A separate app from Rock Up — a real-time "vibe check" for venues, based on the document Caitlyn sent. Started as a Phase 1 MVP (venue check-ins, vibe tags, time-limited visibility, an activity feed) and has grown well past that — see `../nightly-handoff (1).md` for the full, current, feature-by-feature build status; this file is not kept up to date feature-by-feature and shouldn't be treated as the source of truth for what's built.
 
-## What's built vs. deliberately left out
+## What's built (high level — see the handoff doc for real detail)
 
-**Built:**
-- Check in at a real, verified venue (same OpenStreetMap search used in Rock Up)
-- Pick a vibe (Chill / Busy / Lit / Dead) and an optional note
-- Check-ins expire automatically after 2–4 hours (your choice at check-in)
-- A feed grouped by venue, showing who's there and the overall vibe
-- Check out manually any time before it expires
+- Check in at a real, verified venue (OpenStreetMap search), with a vibe (Chill/Busy/Lit/Dead/Match On), optional genre tag, note, and photo
+- Check-ins expire automatically after 2–4 hours, or check out manually any time before
+- A distance-sorted Feed merging live check-ins, nearby venues, and nearby events, with DICE-style photo cards
+- Real friend graph, crews, crew calls (live + push), badges computed from real activity, weekend plans (create/edit/call the crew to one)
+- Installable as a home-screen PWA; real accounts via magic link, layered on top of frictionless anonymous sign-in
 
-**Deliberately left out of this first build** — worth deciding on purpose, not by default:
+**Deliberately left out, on purpose:**
 - **ID/gender verification and QR profiles** — a real compliance and design project on its own
-- **Gamification (badges, streaks, leaderboards)** — the source document includes this, but it's worth deciding deliberately rather than assuming it's wanted
-- **Real friend graph / private visibility tiers** — everyone using the app currently shares one pilot board, same simplification used for Rock Up's first version
-- **Monetisation, venue dashboards, advertising** — all Phase 2+ in the source document too
+- **Monetisation, venue dashboards, advertising** — not this project's problem yet
 
 ## Setup — same process as Rock Up
 
 You'll need a **new, separate Supabase project** — don't reuse Rock Up's, since this is a distinct app with its own data.
 
-1. **Supabase**: New project → SQL Editor → paste and run all of `schema.sql` → Authentication → Providers → enable Anonymous sign-ins → Project Settings → API Keys to get your URL and anon key
+1. **Supabase**: New project → SQL Editor → run `schema.sql`, then every standalone `add-*.sql` migration file in the repo root, in date order (`schema.sql` alone is stale and missing most tables — see the "Standalone SQL scripts" list in `../nightly-handoff (1).md` for what each one does) → Authentication → Providers → enable Anonymous sign-ins → Project Settings → API Keys to get your URL and anon key
 2. **Local test**: `npm install`, copy `.env.example` to `.env` and fill in your values, `npm run dev`
 3. **Deploy**: push to a new GitHub repo, import into Vercel, add the same two environment variables, deploy
 

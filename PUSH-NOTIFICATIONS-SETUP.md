@@ -77,13 +77,46 @@ crew — without it, the function exists but nothing ever calls it.
 
 1. On a real phone: open the live site in Safari (iOS) or Chrome (Android),
    then **Add to Home Screen**.
-2. Open the app from the home-screen icon (not the browser — push only works
-   from the installed icon), go to the **Crew** tab, tap **turn on
-   notifications**, and accept the permission prompt.
-3. From a second account/device, call the crew to a venue.
-4. The first phone should get a real system notification within a few
+2. **Fully close that browser tab.** Tapping "install" does not switch the
+   tab you're already in into standalone mode — it just adds the icon.
+3. Open the app from the home-screen icon you just added (not the browser —
+   push is blocked entirely outside standalone mode on iOS), go to the
+   **hub** (as of 2026-08-21 the "turn on notifications" card lives there,
+   not on the Crew tab — it's the first thing shown after logging in), tap
+   **turn on notifications**, and accept the permission prompt.
+4. From a second account/device, call the crew to a venue (or, as of
+   2026-08-21, to a plan).
+5. The first phone should get a real system notification within a few
    seconds — even if NIGHTLY isn't open.
 
 If nothing arrives: check the Edge Function logs in the Supabase dashboard
 (Functions → send-crew-call-push → Logs) for errors first — that'll usually
 point at whichever step above was missed.
+
+## Known open issue (2026-08-21, unresolved as of 2026-08-22)
+
+Real report from actual users (Caitlyn's friends): "turn on notifications"
+doesn't turn notifications on — confirmed still happening even from the
+installed home-screen icon (i.e. not just the step-2/3 tab-vs-icon mixup
+above, which was found and fixed the same day but didn't fully resolve it).
+
+Confirmed via direct testing against the live production site: the code
+reaches the real browser permission prompt fine, which rules out a missing
+`VITE_VAPID_PUBLIC_KEY` in Vercel (that would fail immediately, before any
+prompt, with a distinct error).
+
+**Not fixable further without a real device.** Automated/remote browser
+testing can't grant real OS notification permission (it auto-denies), and
+iOS push fundamentally requires real hardware. Next concrete step: connect
+an affected iPhone to a Mac and open **Safari → Develop → [device name] →
+[the page]** to read the actual console output during a real tap on the
+button — that will show the true error, or confirm the subscribe step is
+silently succeeding and the real gap is elsewhere (e.g. the Database
+Webhook on `crew_calls` → `send-crew-call-push`, step 5 above, not firing —
+a separate manual dashboard setting that's easy to have not survived some
+other change, and wouldn't show up as a failure on the *subscribing* side
+at all).
+
+Until this is resolved, the in-app crew-call banner (foreground, no
+notification permission required — just needs the app open) is the
+reliable way to reach people.
