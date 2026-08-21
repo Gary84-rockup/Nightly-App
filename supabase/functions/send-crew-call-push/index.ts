@@ -45,10 +45,13 @@ Deno.serve(async (req) => {
     if (!subs?.length) return new Response("no subscriptions for these members", { status: 200 });
 
     const isEventCall = !call.venue_id && call.event_id;
+    const isPlanCall = !!call.plan_id;
     const notificationPayload = JSON.stringify({
       title: `📣 ${call.from_user_name} is calling the crew`,
       body: isEventCall
         ? `Checking interest in ${call.venue_name} — tap to say you're in.`
+        : isPlanCall
+        ? `Planning to be at ${call.venue_name} — tap to say you're in.`
         : `Heading to ${call.venue_name} — tap to check in too.`,
       url: "/",
     });
