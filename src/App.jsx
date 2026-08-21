@@ -684,6 +684,23 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
   );
 }
 
+// A small embedded OpenStreetMap view — free, no API key, no new dependency,
+// same data source the rest of the app already leans on. Only mounted while
+// a card is expanded (not on every collapsed feed card) to keep the feed light.
+function LocationMap({ lat, lng }) {
+  if (lat == null || lng == null) return null;
+  const d = 0.004; // ~400m box — enough to place the venue among its surroundings
+  const bbox = `${lng - d}%2C${lat - d}%2C${lng + d}%2C${lat + d}`;
+  return (
+    <iframe
+      title="location map"
+      src={`https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`}
+      style={{ width: "100%", height: 140, border: `1px solid ${colors.line}`, borderRadius: 10, marginTop: 8, marginBottom: 4 }}
+      loading="lazy"
+    />
+  );
+}
+
 function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVibe, defaultExpanded, isFavorite, onToggleFavorite, friendIds, crews, onCallCrew, distance, reactionsByCheckin, onToggleReaction }) {
   const [pickingCrew, setPickingCrew] = useState(false);
   const [called, setCalled] = useState(false);
@@ -834,6 +851,7 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
               🌐 venue website
             </a>
           )}
+          <LocationMap lat={group.venue.lat} lng={group.venue.lng} />
           {mine ? (
             <div style={{ marginTop: 10 }}>
               <div style={{ fontFamily: monoFont, fontSize: 9.5, letterSpacing: "0.06em", color: colors.textMuted, textTransform: "uppercase", marginBottom: 6 }}>
@@ -966,6 +984,7 @@ function EventCard({ event, interest, onToggleInterest, onCheckInHere, crews, on
           {event.address && (
             <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: colors.textMuted, lineHeight: 1.4 }}>{event.address}</div>
           )}
+          <LocationMap lat={event.lat} lng={event.lng} />
           {/* PredictHQ has no ticket-URL field on any event, so this is a search
               fallback rather than a direct RA/DICE-style deep link. */}
           <a
@@ -1379,10 +1398,13 @@ function FriendsScreen({ myId, friends, onSearchProfiles, onAddFriend, onRemoveF
             <div
               key={r.id}
               onClick={() => { onAddFriend(r.id); setFriendQuery(""); }}
-              style={{ padding: "9px 12px", fontSize: 12.5, color: colors.text, cursor: "pointer", borderBottom: `1px solid ${colors.line}`, display: "flex", justifyContent: "space-between" }}
+              style={{ padding: "9px 12px", fontSize: 12.5, color: colors.text, cursor: "pointer", borderBottom: `1px solid ${colors.line}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}
             >
-              <span>{r.name}</span>
-              <span style={{ color: "#FF3D9A", fontWeight: 700 }}>+ add</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <Avatar url={r.avatar_url} name={r.name} size={24} />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
+              </div>
+              <span style={{ color: "#FF3D9A", fontWeight: 700, flexShrink: 0 }}>+ add</span>
             </div>
           ))}
         </div>
@@ -1395,11 +1417,19 @@ function FriendsScreen({ myId, friends, onSearchProfiles, onAddFriend, onRemoveF
       ) : (
         <div>
           {friends.map((f) => (
-            <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderBottom: `1px solid ${colors.line}` }}>
-              <span style={{ fontFamily: bodyFont, fontSize: 13, color: colors.text, fontWeight: 600 }}>👋 {f.name}</span>
+            <div key={f.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderBottom: `1px solid ${colors.line}`, gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <Avatar url={f.avatar_url} name={f.name} size={28} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontFamily: bodyFont, fontSize: 13, color: colors.text, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                  {f.bio && (
+                    <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.bio}</div>
+                  )}
+                </div>
+              </div>
               <button
                 onClick={() => onRemoveFriend(f.id)}
-                style={{ background: "none", border: "none", color: colors.textMuted, fontFamily: monoFont, fontSize: 10, cursor: "pointer" }}
+                style={{ background: "none", border: "none", color: colors.textMuted, fontFamily: monoFont, fontSize: 10, cursor: "pointer", flexShrink: 0 }}
               >
                 remove
               </button>
@@ -1500,7 +1530,106 @@ function InstallCard({ installed, canInstall, isIOS, onInstall }) {
   );
 }
 
-function BadgesScreen({ stats, userEmail, onSaveAccount, onLogout, installed, canInstall, isIOS, onInstall }) {
+function Avatar({ url, name, size = 28 }) {
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        flexShrink: 0,
+        border: `1px solid ${colors.line}`,
+        background: url ? `url(${url}) center/cover no-repeat` : colors.surfaceRaised,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontFamily: displayFont,
+        fontWeight: 700,
+        fontSize: size * 0.4,
+        color: colors.textMuted,
+      }}
+    >
+      {!url && (name?.[0]?.toUpperCase() || "?")}
+    </div>
+  );
+}
+
+function ProfileCard({ profile, onUpdateAvatar, onUpdateBio }) {
+  const fileInputRef = React.useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [bio, setBio] = useState(profile.bio || "");
+  const [bioSaved, setBioSaved] = useState(false);
+
+  const pickAvatar = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !file.type.startsWith("image/")) return;
+    setUploading(true);
+    try {
+      const compressed = await compressImage(file, 400, 0.85);
+      await onUpdateAvatar(compressed);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const saveBio = async () => {
+    const trimmed = bio.trim();
+    if (trimmed === (profile.bio || "")) return;
+    await onUpdateBio(trimmed);
+    setBioSaved(true);
+    setTimeout(() => setBioSaved(false), 1500);
+  };
+
+  return (
+    <div style={{ background: colors.surface, border: `1px solid ${colors.line}`, borderRadius: 14, padding: 14, marginBottom: 20, display: "flex", gap: 12, alignItems: "flex-start" }}>
+      <input ref={fileInputRef} type="file" accept="image/*" onChange={pickAvatar} style={{ display: "none" }} />
+      <button
+        onClick={() => fileInputRef.current?.click()}
+        disabled={uploading}
+        aria-label="Change profile photo"
+        style={{
+          width: 56,
+          height: 56,
+          borderRadius: "50%",
+          flexShrink: 0,
+          border: `1px solid ${colors.line}`,
+          background: profile.avatar_url ? `url(${profile.avatar_url}) center/cover no-repeat` : colors.surfaceRaised,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+          padding: 0,
+        }}
+      >
+        {!profile.avatar_url && <span style={{ fontSize: 20 }}>{uploading ? "…" : "📷"}</span>}
+      </button>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 14, color: colors.text, marginBottom: 6 }}>{profile.name}</div>
+        <input
+          value={bio}
+          onChange={(e) => setBio(e.target.value.slice(0, 140))}
+          onBlur={saveBio}
+          placeholder="what are you into? house music, chill pubs, quiz nights..."
+          style={{
+            width: "100%",
+            padding: "7px 10px",
+            borderRadius: 8,
+            border: `1px solid ${colors.line}`,
+            background: colors.bg,
+            color: colors.text,
+            fontFamily: bodyFont,
+            fontSize: 12,
+            boxSizing: "border-box",
+          }}
+        />
+        {bioSaved && <div style={{ fontFamily: monoFont, fontSize: 10, color: "#34E4EA", marginTop: 4 }}>saved ✓</div>}
+      </div>
+    </div>
+  );
+}
+
+function BadgesScreen({ stats, userEmail, onSaveAccount, onLogout, installed, canInstall, isIOS, onInstall, profile, onUpdateAvatar, onUpdateBio }) {
   const unlocked = BADGES.filter((b) => stats[b.statKey] >= b.target);
   const locked = BADGES.filter((b) => stats[b.statKey] < b.target);
   const nextBadge = locked.reduce(
@@ -1510,6 +1639,7 @@ function BadgesScreen({ stats, userEmail, onSaveAccount, onLogout, installed, ca
 
   return (
     <div style={{ padding: "20px 0 20px" }}>
+      <ProfileCard profile={profile} onUpdateAvatar={onUpdateAvatar} onUpdateBio={onUpdateBio} />
       <AccountCard userEmail={userEmail} onSaveAccount={onSaveAccount} onLogout={onLogout} />
       <InstallCard installed={installed} canInstall={canInstall} isIOS={isIOS} onInstall={onInstall} />
 
@@ -2380,7 +2510,7 @@ export default function App() {
       setFriends([]);
       return;
     }
-    const { data: profileRows } = await supabase.from("profiles").select("id, name").in("id", friendIds);
+    const { data: profileRows } = await supabase.from("profiles").select("id, name, avatar_url, bio").in("id", friendIds);
     setFriends(profileRows || []);
   }, [session]);
 
@@ -2481,7 +2611,7 @@ export default function App() {
   };
 
   const searchProfiles = async (query) => {
-    let builder = supabase.from("profiles").select("id, name").neq("id", session.user.id).limit(15);
+    let builder = supabase.from("profiles").select("id, name, avatar_url, bio").neq("id", session.user.id).limit(15);
     if (query && query.trim().length >= 2) {
       builder = builder.ilike("name", `%${query.trim()}%`);
     }
@@ -2595,6 +2725,35 @@ export default function App() {
 
   const logout = async () => {
     await supabase.auth.signOut();
+  };
+
+  // One file per user at "{user_id}/avatar.jpg", always upserted rather than
+  // accumulating old photos. The uploaded URL gets a cache-busting query param
+  // baked in so a re-upload doesn't keep showing a stale cached image at the
+  // same path.
+  const updateAvatar = async (compressedBlob) => {
+    try {
+      const path = `${session.user.id}/avatar.jpg`;
+      const { error: uploadErr } = await supabase.storage
+        .from("avatars")
+        .upload(path, compressedBlob, { contentType: "image/jpeg", upsert: true });
+      if (uploadErr) throw uploadErr;
+      const avatarUrl = `${supabase.storage.from("avatars").getPublicUrl(path).data.publicUrl}?t=${Date.now()}`;
+      const { error: updateErr } = await supabase.from("profiles").update({ avatar_url: avatarUrl }).eq("id", session.user.id);
+      if (updateErr) throw updateErr;
+      setProfile((p) => ({ ...p, avatar_url: avatarUrl }));
+    } catch (e) {
+      setError("Couldn't update your photo — try again.");
+    }
+  };
+
+  const updateBio = async (bio) => {
+    const { error: updateErr } = await supabase.from("profiles").update({ bio }).eq("id", session.user.id);
+    if (updateErr) {
+      setError("Couldn't save that — try again.");
+      return;
+    }
+    setProfile((p) => ({ ...p, bio }));
   };
 
   const checkIn = async (data) => {
@@ -2750,6 +2909,9 @@ export default function App() {
                   canInstall={!!installEvent}
                   isIOS={isIOSDevice()}
                   onInstall={promptInstall}
+                  profile={profile}
+                  onUpdateAvatar={updateAvatar}
+                  onUpdateBio={updateBio}
                 />
               ) : (
                 <FeedScreen
