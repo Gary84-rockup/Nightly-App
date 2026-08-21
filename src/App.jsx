@@ -346,8 +346,12 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
       try {
         let data = [];
         if (geo.coords) {
-          // Hard-filtered to a ~10km box around the user first — a soft bias alone let a same-named
-          // venue on the other side of the country outrank the real nearby match in the top results.
+          // Always search a tight box around the user AND everywhere, not bounded-then-
+          // fall-back-only-if-empty — a real, different same-named venue a mile away (e.g.
+          // another "Three Tuns") would otherwise make the bounded search non-empty and
+          // silently hide a specific venue the user is actually searching for elsewhere
+          // (e.g. one in a different town they explicitly typed). Merged and sorted by
+          // distance below, so the nearby one still surfaces first when that's what's wanted.
           const d = 0.09;
           const boundedParams = new URLSearchParams({
             format: "json",
@@ -357,14 +361,16 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
             viewbox: `${geo.coords.lng - d},${geo.coords.lat + d},${geo.coords.lng + d},${geo.coords.lat - d}`,
             bounded: "1",
           });
-          const res = await fetch(`https://nominatim.openstreetmap.org/search?${boundedParams.toString()}`);
-          data = await res.json();
-          if (data.length === 0) {
-            // Nothing with that name nearby — fall back to a global search rather than showing nothing.
-            const fallbackParams = new URLSearchParams({ format: "json", limit: "5", extratags: "1", q: venueQuery });
-            const fallbackRes = await fetch(`https://nominatim.openstreetmap.org/search?${fallbackParams.toString()}`);
-            data = await fallbackRes.json();
-          }
+          const globalParams = new URLSearchParams({ format: "json", limit: "8", extratags: "1", q: venueQuery });
+          const [boundedRes, globalRes] = await Promise.all([
+            fetch(`https://nominatim.openstreetmap.org/search?${boundedParams.toString()}`),
+            fetch(`https://nominatim.openstreetmap.org/search?${globalParams.toString()}`),
+          ]);
+          const [boundedData, globalData] = await Promise.all([boundedRes.json(), globalRes.json()]);
+          const seenIds = new Set();
+          data = [...boundedData, ...globalData].filter((r) =>
+            seenIds.has(r.place_id) ? false : (seenIds.add(r.place_id), true)
+          );
         } else {
           const params = new URLSearchParams({ format: "json", limit: "5", extratags: "1", q: venueQuery });
           const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`);
@@ -1700,32 +1706,52 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
       try {
         let data = [];
         if (geo.coords) {
-          // Hard-filtered to a ~10km box around the user first, same fix as the
-          // check-in screen's own search — otherwise a common pub name (e.g. "The
-          // Three Tuns") pulls back same-named venues from anywhere in the country.
+          // Always search a tight box around the user AND everywhere, not bounded-then-
+          // fall-back-only-if-empty — same fix as the check-in screen's own search. A real,
+          // different same-named venue nearby would otherwise make the bounded search
+          // non-empty and silently hide a specific venue the user actually typed for
+          // (e.g. one in a different town). Merged and sorted by distance below.
           const d = 0.09;
           const boundedParams = new URLSearchParams({
             format: "json",
-            limit: "4",
+            limit: "6",
             q: query,
             viewbox: `${geo.coords.lng - d},${geo.coords.lat + d},${geo.coords.lng + d},${geo.coords.lat - d}`,
             bounded: "1",
           });
-          const res = await fetch(`https://nominatim.openstreetmap.org/search?${boundedParams.toString()}`);
-          data = await res.json();
-          if (data.length === 0) {
-            const fallbackRes = await fetch(
-              `https://nominatim.openstreetmap.org/search?format=json&limit=4&q=${encodeURIComponent(query)}`
-            );
-            data = await fallbackRes.json();
-          }
+          const globalParams = new URLSearchParams({ format: "json", limit: "6", q: query });
+          const [boundedRes, globalRes] = await Promise.all([
+            fetch(`https://nominatim.openstreetmap.org/search?${boundedParams.toString()}`),
+            fetch(`https://nominatim.openstreetmap.org/search?${globalParams.toString()}`),
+          ]);
+          const [boundedData, globalData] = await Promise.all([boundedRes.json(), globalRes.json()]);
+          const seenIds = new Set();
+          data = [...boundedData, ...globalData].filter((r) =>
+            seenIds.has(r.place_id) ? false : (seenIds.add(r.place_id), true)
+          );
         } else {
           const res = await fetch(
             `https://nominatim.openstreetmap.org/search?format=json&limit=4&q=${encodeURIComponent(query)}`
           );
           data = await res.json();
         }
-        setOsmResults(data);
+        // Same non-venue-class exclusion as the check-in screen's search — a bus stop or
+        // other tagged feature sharing the venue's name shouldn't appear as a result.
+        const NON_VENUE_CLASSES = new Set(["highway", "boundary", "waterway", "natural", "landuse", "railway", "place", "administrative"]);
+        const seen = new Set();
+        let results = data
+          .filter((r) => !NON_VENUE_CLASSES.has(r.class))
+          .filter((r) => (seen.has(r.display_name) ? false : (seen.add(r.display_name), true)));
+        if (geo.coords) {
+          results = results
+            .sort(
+              (a, b) =>
+                distanceMeters(geo.coords.lat, geo.coords.lng, parseFloat(a.lat), parseFloat(a.lon)) -
+                distanceMeters(geo.coords.lat, geo.coords.lng, parseFloat(b.lat), parseFloat(b.lon))
+            )
+            .slice(0, 4);
+        }
+        setOsmResults(results);
       } catch (e) {
         setOsmResults([]);
       } finally {
