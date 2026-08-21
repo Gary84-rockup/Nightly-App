@@ -1212,10 +1212,80 @@ function PlanCard({ plan, interest, onToggleInterest, friendIds, myId }) {
   );
 }
 
+// One plan card with its own "call the crew" flow — same pick-a-crew /
+// called-confirmation pattern as VenueCard's live crew call, just pointed
+// at a future plan instead of a venue you're at right now.
+function MyPlanRow({ plan, crews, onEdit, onCallCrew }) {
+  const [pickingCrew, setPickingCrew] = useState(false);
+  const [called, setCalled] = useState(false);
+
+  return (
+    <div style={{ background: colors.surface, border: `1px solid ${colors.line}`, borderRadius: 14, padding: 14, marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: monoFont, fontSize: 10, color: "#FF6B4A", fontWeight: 700, marginBottom: 4 }}>
+            📅 {formatPlanDate(plan.planned_date)}
+          </div>
+          <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 15, color: colors.text }}>
+            📍 {plan.venue_name}
+          </div>
+          {plan.genre && GENRE_TAGS[plan.genre] && (
+            <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: colors.textMuted, marginTop: 3 }}>
+              {GENRE_TAGS[plan.genre].emoji} {GENRE_TAGS[plan.genre].label}
+            </div>
+          )}
+          {plan.note && <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginTop: 4 }}>"{plan.note}"</div>}
+        </div>
+        <Button variant="ghost" onClick={() => onEdit(plan)} style={{ padding: "7px 12px", fontSize: 11.5, flexShrink: 0 }}>
+          ✏️ edit
+        </Button>
+      </div>
+
+      {crews && crews.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          {called ? (
+            <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: "#FF6B4A", fontWeight: 700 }}>
+              📣 crew called!
+            </div>
+          ) : pickingCrew ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted, marginBottom: 2 }}>
+                call which crew?
+              </div>
+              {crews.map((c) => (
+                <Button
+                  key={c.id}
+                  variant="ghost"
+                  onClick={() => { onCallCrew(c.id, plan); setCalled(true); setPickingCrew(false); }}
+                  style={{ padding: "7px 10px", fontSize: 11.5, textAlign: "left" }}
+                >
+                  {c.name}
+                </Button>
+              ))}
+            </div>
+          ) : (
+            <Button
+              variant="ghost"
+              onClick={() =>
+                crews.length === 1
+                  ? (onCallCrew(crews[0].id, plan), setCalled(true))
+                  : setPickingCrew(true)
+              }
+              style={{ padding: "7px 12px", fontSize: 11.5 }}
+            >
+              📣 call the crew to this
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Reached from the hub's Plan tile when you already have a plan on the books
 // — shows what you've got instead of dropping you straight into a blank
-// form, with a way to edit each one or add another.
-function MyPlansScreen({ plans, onEdit, onMakeAnother }) {
+// form, with a way to edit each one, call your crew to it, or add another.
+function MyPlansScreen({ plans, crews, onEdit, onCallCrew, onMakeAnother }) {
   return (
     <div style={{ padding: "6px 0 20px" }}>
       <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 18, color: colors.text, marginBottom: 4 }}>
@@ -1225,27 +1295,7 @@ function MyPlansScreen({ plans, onEdit, onMakeAnother }) {
         {plans.length === 1 ? "one plan coming up." : `${plans.length} plans coming up.`}
       </div>
       {plans.map((p) => (
-        <div key={p.id} style={{ background: colors.surface, border: `1px solid ${colors.line}`, borderRadius: 14, padding: 14, marginBottom: 10 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontFamily: monoFont, fontSize: 10, color: "#FF6B4A", fontWeight: 700, marginBottom: 4 }}>
-                📅 {formatPlanDate(p.planned_date)}
-              </div>
-              <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 15, color: colors.text }}>
-                📍 {p.venue_name}
-              </div>
-              {p.genre && GENRE_TAGS[p.genre] && (
-                <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: colors.textMuted, marginTop: 3 }}>
-                  {GENRE_TAGS[p.genre].emoji} {GENRE_TAGS[p.genre].label}
-                </div>
-              )}
-              {p.note && <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginTop: 4 }}>"{p.note}"</div>}
-            </div>
-            <Button variant="ghost" onClick={() => onEdit(p)} style={{ padding: "7px 12px", fontSize: 11.5, flexShrink: 0 }}>
-              ✏️ edit
-            </Button>
-          </div>
-        </div>
+        <MyPlanRow key={p.id} plan={p} crews={crews} onEdit={onEdit} onCallCrew={onCallCrew} />
       ))}
       <Button onClick={onMakeAnother} style={{ width: "100%", marginTop: 6 }}>
         + make another plan
@@ -2411,6 +2461,7 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
           {crewCalls.map((call) => {
             const crewName = (crews.find((c) => c.id === call.crew_id) || {}).name || "your crew";
             const isEventCall = !call.venue_id && call.event_id;
+            const isPlanCall = !!call.plan_id;
             return (
               <div
                 key={call.id}
@@ -2428,6 +2479,11 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
                     <>
                       to check interest in <strong>{call.venue_name}</strong>
                     </>
+                  ) : isPlanCall ? (
+                    <>
+                      to join them at <strong>{call.venue_name}</strong>
+                      {call.planned_date ? <> {formatPlanDate(call.planned_date)}</> : null}
+                    </>
                   ) : (
                     <>
                       to go to <strong>{call.venue_name}</strong>
@@ -2440,6 +2496,13 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
                     style={{ padding: "8px 14px", fontSize: 12 }}
                   >
                     🙋 I'm interested too
+                  </Button>
+                ) : isPlanCall ? (
+                  <Button
+                    onClick={() => togglePlanInterest(call.plan_id)}
+                    style={{ padding: "8px 14px", fontSize: 12 }}
+                  >
+                    🙋 I'm in
                   </Button>
                 ) : (
                   <Button
@@ -3102,9 +3165,14 @@ export default function App() {
     loadStats();
   };
 
-  const callTheCrew = async (crewId, venue, eventId) => {
+  // A live call ("come now") expires in 3h same as a check-in; a plan call
+  // has no urgency window like that — it stays live until the planned day
+  // is over, so people can still see and join it right up to the day.
+  const callTheCrew = async (crewId, venue, eventId, planId, plannedDate) => {
     try {
-      const expiresAt = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+      const expiresAt = planId
+        ? new Date(`${plannedDate}T23:59:59`).toISOString()
+        : new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
       await supabase.from("crew_calls").insert({
         crew_id: crewId,
         from_user_id: session.user.id,
@@ -3112,6 +3180,8 @@ export default function App() {
         venue_id: venue.id || null,
         venue_name: venue.name,
         event_id: eventId || null,
+        plan_id: planId || null,
+        planned_date: plannedDate || null,
         expires_at: expiresAt,
       });
     } catch (e) {
@@ -3430,6 +3500,8 @@ export default function App() {
               ) : view === "myplans" ? (
                 <MyPlansScreen
                   plans={plans.filter((p) => p.user_id === session.user.id)}
+                  crews={crews}
+                  onCallCrew={(crewId, plan) => callTheCrew(crewId, { id: plan.venue_id, name: plan.venue_name }, null, plan.id, plan.planned_date)}
                   onEdit={(plan) => {
                     setEditingPlan(plan);
                     setPresetVenue({ id: plan.venue_id, name: plan.venue_name });
