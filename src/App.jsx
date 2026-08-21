@@ -279,6 +279,31 @@ function NameGate({ onSet, busy, onSendMagicLink, inviterName }) {
   );
 }
 
+// Downscales a photo client-side before upload — a phone camera photo can be
+// several MB, and check-ins are meant to be quick, so this keeps upload time
+// and storage cost down without a server-side image pipeline.
+function compressImage(file, maxDimension = 1280, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("compression failed"))), "image/jpeg", quality);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("couldn't read that image"));
+    };
+    img.src = objectUrl;
+  });
+}
+
 function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonightCrew }) {
   const [venueQuery, setVenueQuery] = useState(initialVenueQuery || "");
   const [venueResults, setVenueResults] = useState([]);
@@ -291,6 +316,40 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
   const [note, setNote] = useState("");
   const [hours, setHours] = useState(3);
   const [includeCrew, setIncludeCrew] = useState(!!tonightCrew);
+  const [photoBlob, setPhotoBlob] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [photoError, setPhotoError] = useState(null);
+  const [compressingPhoto, setCompressingPhoto] = useState(false);
+  const photoInputRef = React.useRef(null);
+
+  const pickPhoto = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // lets picking the same file again re-trigger onChange
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setPhotoError("that's not an image");
+      return;
+    }
+    setPhotoError(null);
+    setCompressingPhoto(true);
+    try {
+      const compressed = await compressImage(file);
+      if (photoPreview) URL.revokeObjectURL(photoPreview);
+      setPhotoBlob(compressed);
+      setPhotoPreview(URL.createObjectURL(compressed));
+    } catch (err) {
+      setPhotoError("couldn't use that photo — try another");
+    } finally {
+      setCompressingPhoto(false);
+    }
+  };
+
+  const removePhoto = () => {
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhotoBlob(null);
+    setPhotoPreview(null);
+    setPhotoError(null);
+  };
   const [nearby, setNearby] = useState([]);
   const [nearbyStatus, setNearbyStatus] = useState("idle");
   const [nearbyRetryCount, setNearbyRetryCount] = useState(0);
@@ -542,6 +601,36 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
       <label style={label}>note (optional)</label>
       <input style={{ ...inputStyle, marginBottom: 14 }} value={note} onChange={(e) => setNote(e.target.value)} placeholder="queue's short, DJ's good..." />
 
+      <label style={label}>photo (optional)</label>
+      <input ref={photoInputRef} type="file" accept="image/*" onChange={pickPhoto} style={{ display: "none" }} />
+      <div style={{ marginBottom: 14 }}>
+        {photoPreview ? (
+          <div style={{ position: "relative", width: 96, height: 96 }}>
+            <img
+              src={photoPreview}
+              alt=""
+              style={{ width: 96, height: 96, borderRadius: 10, objectFit: "cover", border: `1px solid ${colors.line}` }}
+            />
+            <button
+              onClick={removePhoto}
+              aria-label="Remove photo"
+              style={{
+                position: "absolute", top: -8, right: -8, width: 24, height: 24, borderRadius: "50%",
+                background: colors.danger, border: `2px solid ${colors.bg}`, color: "#fff", fontSize: 12,
+                fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        ) : (
+          <Button variant="ghost" onClick={() => photoInputRef.current?.click()} disabled={compressingPhoto} style={{ padding: "9px 14px", fontSize: 12.5 }}>
+            {compressingPhoto ? "processing…" : "📷 add a photo"}
+          </Button>
+        )}
+        {photoError && <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.danger, marginTop: 6 }}>{photoError}</div>}
+      </div>
+
       <label style={label}>visible for</label>
       <div style={{ display: "flex", gap: 6, marginBottom: 20 }}>
         {[2, 3, 4].map((h) => (
@@ -574,7 +663,6 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
       <div style={{ display: "flex", gap: 10 }}>
         <Button variant="ghost" onClick={onCancel} style={{ flex: 1 }}>cancel</Button>
         <Button
-          disabled={!selectedVenue}
           onClick={() =>
             selectedVenue &&
             onCreate({
@@ -583,8 +671,10 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
               note: note.trim(),
               hours,
               crewId: includeCrew && tonightCrew ? tonightCrew.id : null,
+              photoBlob,
             })
           }
+          disabled={!selectedVenue || compressingPhoto}
           style={{ flex: 2 }}
         >
           check in
@@ -696,6 +786,17 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
                 <span style={{ color: VIBES[c.vibe].color }}>{VIBES[c.vibe].emoji}</span> {c.user_name}
                 {isFriend && <span style={{ color: "#FFC24B", fontSize: 10, marginLeft: 4 }}>· friend</span>}
                 {c.note ? <span style={{ color: colors.textMuted }}> — "{c.note}"</span> : null}
+                {c.photo_url && (
+                  <div style={{ marginTop: 6 }}>
+                    <a href={c.photo_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
+                      <img
+                        src={c.photo_url}
+                        alt=""
+                        style={{ width: 72, height: 72, borderRadius: 8, objectFit: "cover", border: `1px solid ${colors.line}`, display: "block" }}
+                      />
+                    </a>
+                  </div>
+                )}
                 {onToggleReaction && (
                   <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
                     {REACTION_EMOJIS.map((emoji) => {
@@ -751,7 +852,7 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
                   </Button>
                 ))}
               </div>
-              <Button variant="danger" onClick={() => onCheckOut(mine.id)} style={{ padding: "7px 12px", fontSize: 11.5 }}>
+              <Button variant="danger" onClick={() => onCheckOut(mine.id, mine.photo_url)} style={{ padding: "7px 12px", fontSize: 11.5 }}>
                 check out
               </Button>
             </div>
@@ -2517,6 +2618,20 @@ export default function App() {
           venueId = newVenue.id;
         }
       }
+      let photoUrl = null;
+      if (data.photoBlob) {
+        try {
+          const path = `${session.user.id}/${Date.now()}.jpg`;
+          const { error: uploadErr } = await supabase.storage
+            .from("checkin-photos")
+            .upload(path, data.photoBlob, { contentType: "image/jpeg" });
+          if (uploadErr) throw uploadErr;
+          photoUrl = supabase.storage.from("checkin-photos").getPublicUrl(path).data.publicUrl;
+        } catch (photoErr) {
+          // Non-fatal — a failed photo upload shouldn't block the check-in itself.
+        }
+      }
+
       const expiresAt = new Date(Date.now() + data.hours * 60 * 60 * 1000).toISOString();
       const { error: checkinErr } = await supabase.from("checkins").insert({
         venue_id: venueId,
@@ -2527,6 +2642,7 @@ export default function App() {
         visibility: "shared",
         expires_at: expiresAt,
         crew_id: data.crewId || null,
+        photo_url: photoUrl,
       });
       if (checkinErr) throw checkinErr;
       setView("feed");
@@ -2539,10 +2655,20 @@ export default function App() {
     }
   };
 
-  const checkOut = async (checkinId) => {
+  const checkOut = async (checkinId, photoUrl) => {
     const { error: delErr } = await supabase.from("checkins").delete().eq("id", checkinId);
-    if (delErr) setError("Couldn't check out — try again.");
-    else { loadData(); loadStats(); }
+    if (delErr) {
+      setError("Couldn't check out — try again.");
+      return;
+    }
+    if (photoUrl) {
+      // Best-effort cleanup — an orphaned photo left in storage isn't worth failing
+      // the checkout over. Path is always "{user_id}/{filename}", same as on upload.
+      const path = photoUrl.split("/checkin-photos/")[1];
+      if (path) supabase.storage.from("checkin-photos").remove([path]).catch(() => {});
+    }
+    loadData();
+    loadStats();
   };
 
   const updateVibe = async (checkinId, vibe) => {
