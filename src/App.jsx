@@ -1124,7 +1124,13 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
             </div>
           )}
 
-          {crews && crews.length > 0 && (
+          {/* Same gate as the favourite star above — a discovery venue (zero
+              check-ins, no real `venues` row yet) has no id, so a call here
+              would insert a crew_calls row with venue_id: null. Confirmed
+              live 2026-08-22: that row then renders as an ordinary venue
+              call with a broken "check in here too" (tries to create a new
+              venue with no lat/lng and fails) — this gate stops new ones. */}
+          {group.venue.id && crews && crews.length > 0 && (
             <div style={{ marginTop: 8 }}>
               {called ? (
                 <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: "#FF6B4A", fontWeight: 700 }}>
@@ -2504,7 +2510,7 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
                   >
                     🙋 I'm in
                   </Button>
-                ) : (
+                ) : call.venue_id ? (
                   <Button
                     onClick={() =>
                       onCheckInHere({ id: call.venue_id, name: call.venue_name, lat: null, lng: null, osm_website: null })
@@ -2513,6 +2519,17 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
                   >
                     check in here too
                   </Button>
+                ) : (
+                  // A call to a discovery venue (no real venues row, so no id)
+                  // used to reach here and offer a "check in here too" that
+                  // silently failed trying to create a venue with no
+                  // coordinates. Fixed at the source (the call button is now
+                  // hidden on discovery venues), but this guards any call
+                  // already in flight from that gap, and any future case that
+                  // ends up with neither an event/plan/venue id.
+                  <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: colors.textMuted }}>
+                    search for "{call.venue_name}" to check in there yourself
+                  </div>
                 )}
               </div>
             );
