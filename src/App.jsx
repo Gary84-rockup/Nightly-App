@@ -18,6 +18,11 @@ const VIBES = {
   chill: { label: "Chill", color: "#4ECDC4", emoji: "🌙", gradient: "linear-gradient(135deg, #1B2E2A, #2B1712)" },
   busy: { label: "Busy", color: "#FFB454", emoji: "🔥", gradient: "linear-gradient(135deg, #332411, #2B1712)" },
   lit: { label: "Lit", color: "#FF6B4A", emoji: "⚡", gradient: "linear-gradient(135deg, #331A12, #2B1712)" },
+  // Added 2026-08-21 — a live match/game showing, not a self-rated party
+  // vibe. Sits alongside the others in the same vibe picker since it's still
+  // "what's happening here right now", just sport-flavoured (built ahead of
+  // the SA vs All Blacks weekend).
+  sport: { label: "Match On", color: "#8BC34A", emoji: "📺", gradient: "linear-gradient(135deg, #1F2E14, #2B1712)" },
   // Lightened 2026-08-21 for contrast, same fix as textMuted above, plus a
   // two-tone gradient (was a flat single-color fill) so Dead/Quiet cards read
   // as distinct cards rather than one undifferentiated dark block. Re-picked
@@ -58,7 +63,7 @@ const SCREEN_TITLES = { feed: "who's out", checkin: "plan ahead", crew: "your cr
 
 // DICE-inspired venue cards use a real photo per vibe instead of a flat
 // colour wash — "lit" has no photo yet, so it keeps the gradient fallback.
-const VIBE_PHOTOS = { busy: "/vibes/busy.jpg", chill: "/vibes/chill.jpg", dead: "/vibes/dead.jpg" };
+const VIBE_PHOTOS = { busy: "/vibes/busy.jpg", chill: "/vibes/chill.jpg", dead: "/vibes/dead.jpg", sport: "/vibes/sport.jpg" };
 function statNoun(statKey, count) {
   const word = STAT_NOUNS[statKey] || "";
   return count === 1 ? word : `${word}s`;
