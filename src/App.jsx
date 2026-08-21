@@ -25,6 +25,19 @@ const VIBES = {
   dead: { label: "Dead", color: "#9187B0", emoji: "💤", gradient: "linear-gradient(135deg, #221A33, #170F22)" },
 };
 
+// Optional "what's on" tag per check-in — a small fixed set rather than
+// Spotify-style genre sync, same reasoning as the fixed reaction emoji set
+// (no picker UI, no extra dependency). Recommendation #2 from the 2026-08-21
+// competitive UX review — the single most-repeated ask against DICE/RA.
+const GENRE_TAGS = {
+  house: { emoji: "🏠", label: "House" },
+  techno: { emoji: "🎛️", label: "Techno" },
+  live: { emoji: "🎸", label: "Live Music" },
+  cocktails: { emoji: "🍸", label: "Cocktails" },
+  sports: { emoji: "⚽", label: "Sports" },
+  quiz: { emoji: "🧠", label: "Quiz Night" },
+};
+
 // Curated reaction set for individual check-ins — deliberately fixed rather than a
 // full emoji picker (would roughly double the app's bundle size for one feature on
 // this dependency-free build, see project-notes.md).
@@ -320,6 +333,7 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
       : null
   );
   const [vibe, setVibe] = useState("chill");
+  const [genre, setGenre] = useState(null);
   const [note, setNote] = useState("");
   const [hours, setHours] = useState(3);
   const [includeCrew, setIncludeCrew] = useState(!!tonightCrew);
@@ -605,6 +619,30 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
         ))}
       </div>
 
+      <label style={label}>what's on? (optional)</label>
+      <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+        {Object.entries(GENRE_TAGS).map(([key, g]) => (
+          <button
+            key={key}
+            onClick={() => setGenre((cur) => (cur === key ? null : key))}
+            style={{
+              padding: "7px 11px",
+              borderRadius: 9,
+              border: `1px solid ${genre === key ? "#FF3D9A" : colors.line}`,
+              background: genre === key ? "#FF3D9A22" : "transparent",
+              color: genre === key ? "#FF3D9A" : colors.textMuted,
+              fontFamily: bodyFont,
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {g.emoji} {g.label}
+          </button>
+        ))}
+      </div>
+
       <label style={label}>note (optional)</label>
       <input style={{ ...inputStyle, marginBottom: 14 }} value={note} onChange={(e) => setNote(e.target.value)} placeholder="queue's short, DJ's good..." />
 
@@ -675,6 +713,7 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
             onCreate({
               venue: selectedVenue,
               vibe,
+              genre,
               note: note.trim(),
               hours,
               crewId: includeCrew && tonightCrew ? tonightCrew.id : null,
@@ -720,6 +759,11 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
     : { label: "Quiet for now", color: "#9187B0", emoji: "🌑", gradient: "linear-gradient(135deg, #221A33, #170F22)" };
   const mine = group.checkins.find((c) => c.user_id === myId);
   const isPumping = group.checkins.length >= 5;
+
+  const genreCounts = {};
+  group.checkins.forEach((c) => { if (c.genre) genreCounts[c.genre] = (genreCounts[c.genre] || 0) + 1; });
+  const topGenreEntry = Object.entries(genreCounts).sort((a, b) => b[1] - a[1])[0];
+  const topGenre = topGenreEntry ? GENRE_TAGS[topGenreEntry[0]] : null;
 
   return (
     <div
@@ -772,6 +816,11 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
           🌃 OPEN LATE
         </div>
       )}
+      {topGenre && (
+        <div style={{ fontFamily: monoFont, fontSize: 9.5, color: "#FF3D9A", fontWeight: 700, marginBottom: 8 }}>
+          {topGenre.emoji} {topGenre.label.toUpperCase()}
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.textMuted, fontWeight: 600 }}>
           {distance != null && `📍 ${formatDistance(distance)} · `}
@@ -808,6 +857,11 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
               >
                 {isFriend && <span style={{ marginRight: 4 }}>👋</span>}
                 <span style={{ color: VIBES[c.vibe].color }}>{VIBES[c.vibe].emoji}</span> {c.user_name}
+                {c.genre && GENRE_TAGS[c.genre] && (
+                  <span style={{ color: "#FF3D9A", fontSize: 10.5, marginLeft: 4 }}>
+                    · {GENRE_TAGS[c.genre].emoji} {GENRE_TAGS[c.genre].label}
+                  </span>
+                )}
                 {isFriend && <span style={{ color: "#FFC24B", fontSize: 10, marginLeft: 4 }}>· friend</span>}
                 {c.note ? <span style={{ color: colors.textMuted }}> — "{c.note}"</span> : null}
                 {c.photo_url && (
@@ -1752,6 +1806,7 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
   const [spotlightId, setSpotlightId] = useState(null);
   const [busyOnly, setBusyOnly] = useState(false);
   const [openLateOnly, setOpenLateOnly] = useState(false);
+  const [genreFilter, setGenreFilter] = useState(null);
   const [events, setEvents] = useState([]);
   const [eventsStatus, setEventsStatus] = useState("idle");
   const [eventsRetryCount, setEventsRetryCount] = useState(0);
@@ -1895,9 +1950,14 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
     trendingScore: g.checkins.length,
     recencyScore: g.checkins.length > 0 ? Math.max(...g.checkins.map((c) => new Date(c.created_at).getTime())) : 0,
     matchesQuery: !query.trim() || g.venue.name.toLowerCase().includes(query.trim().toLowerCase()),
-    // Busy/open-late are venue-only concepts — a venue fails the filter (rather
-    // than being exempt) when it doesn't meet it, same as before this change.
-    passesFilters: (!busyOnly || g.checkins.length >= 3) && (!openLateOnly || isOpenLate(g.venue.opening_hours)),
+    // Busy/open-late/genre are venue-only concepts — a venue fails the filter
+    // (rather than being exempt) when it doesn't meet it. Genre needs at least
+    // one check-in tagged with the selected genre — a venue with zero check-ins
+    // (or checkins nobody tagged) has nothing to match against.
+    passesFilters:
+      (!busyOnly || g.checkins.length >= 3) &&
+      (!openLateOnly || isOpenLate(g.venue.opening_hours)) &&
+      (!genreFilter || g.checkins.some((c) => c.genre === genreFilter)),
     group: g,
   }));
 
@@ -1908,7 +1968,7 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
     trendingScore: interestByEvent[e.id]?.count || 0,
     recencyScore: -new Date(e.start).getTime(), // soonest-starting reads as "newest" for an event
     matchesQuery: !query.trim() || e.title.toLowerCase().includes(query.trim().toLowerCase()),
-    passesFilters: !busyOnly && !openLateOnly,
+    passesFilters: !busyOnly && !openLateOnly && !genreFilter,
     event: e,
   }));
 
@@ -2208,6 +2268,31 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
               }}
             >
               {f.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {(groups.length > 0 || discoveryVenues.length > 0) && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+          {Object.entries(GENRE_TAGS).map(([key, g]) => (
+            <button
+              key={key}
+              onClick={() => setGenreFilter((cur) => (cur === key ? null : key))}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 10,
+                border: `1px solid ${genreFilter === key ? "#FF3D9A" : colors.line}`,
+                background: genreFilter === key ? "#FF3D9A22" : "transparent",
+                color: genreFilter === key ? "#FF3D9A" : colors.textMuted,
+                fontFamily: bodyFont,
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {g.emoji} {g.label}
             </button>
           ))}
         </div>
@@ -2804,6 +2889,7 @@ export default function App() {
         user_id: session.user.id,
         user_name: profile.name,
         vibe: data.vibe,
+        genre: data.genre || null,
         note: data.note || null,
         visibility: "shared",
         expires_at: expiresAt,
