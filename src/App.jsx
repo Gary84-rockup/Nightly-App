@@ -126,6 +126,14 @@ function urlBase64ToUint8Array(base64String) {
   return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
 }
 
+function isIOSDevice() {
+  return /iphone|ipad|ipod/i.test(window.navigator.userAgent) && !window.MSStream;
+}
+
+function isStandaloneDisplay() {
+  return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+}
+
 async function subscribeToPush(supabaseClient, userId) {
   const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
   if (!vapidKey) throw new Error("VITE_VAPID_PUBLIC_KEY isn't set — see PUSH-NOTIFICATIONS-SETUP.md");
@@ -173,7 +181,7 @@ function Button({ children, onClick, variant = "primary", accent, style, disable
   );
 }
 
-function NameGate({ onSet, busy, onSendMagicLink }) {
+function NameGate({ onSet, busy, onSendMagicLink, inviterName }) {
   const [name, setName] = useState("");
   const [showSignIn, setShowSignIn] = useState(false);
   const [email, setEmail] = useState("");
@@ -206,7 +214,7 @@ function NameGate({ onSet, busy, onSendMagicLink }) {
         NIGHTLY
       </div>
       <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 24, color: colors.text, marginBottom: 8 }}>
-        who's out tonight?
+        {inviterName ? `${inviterName} invited you to NIGHTLY` : "who's out tonight?"}
       </div>
 
       {showSignIn ? (
@@ -243,7 +251,7 @@ function NameGate({ onSet, busy, onSendMagicLink }) {
       ) : (
         <>
           <div style={{ fontFamily: bodyFont, fontSize: 13, color: colors.textMuted, marginBottom: 20, lineHeight: 1.5 }}>
-            just your name to try it out — no account needed.
+            {inviterName ? "join them — just your name to try it out, no account needed." : "just your name to try it out — no account needed."}
           </div>
           <input
             value={name}
@@ -1308,7 +1316,33 @@ function AccountCard({ userEmail, onSaveAccount, onLogout }) {
   );
 }
 
-function BadgesScreen({ stats, userEmail, onSaveAccount, onLogout }) {
+function InstallCard({ installed, canInstall, isIOS, onInstall }) {
+  const [showIOSSteps, setShowIOSSteps] = useState(false);
+
+  if (installed || (!canInstall && !isIOS)) return null;
+
+  return (
+    <div style={{ background: colors.surface, border: `1px solid ${colors.line}`, borderRadius: 14, padding: 14, marginBottom: 20 }}>
+      <div style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 13, color: colors.text, marginBottom: 4 }}>
+        📲 install NIGHTLY
+      </div>
+      <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginBottom: 10, lineHeight: 1.4 }}>
+        add it to your home screen — a real app icon, full-screen, and crew-call notifications.
+      </div>
+      {showIOSSteps ? (
+        <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.text, lineHeight: 1.6 }}>
+          tap <strong>share</strong> ⬆️ in Safari, then <strong>"add to home screen."</strong>
+        </div>
+      ) : (
+        <Button onClick={canInstall ? onInstall : () => setShowIOSSteps(true)} style={{ width: "100%" }}>
+          install app
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function BadgesScreen({ stats, userEmail, onSaveAccount, onLogout, installed, canInstall, isIOS, onInstall }) {
   const unlocked = BADGES.filter((b) => stats[b.statKey] >= b.target);
   const locked = BADGES.filter((b) => stats[b.statKey] < b.target);
   const nextBadge = locked.reduce(
@@ -1319,6 +1353,7 @@ function BadgesScreen({ stats, userEmail, onSaveAccount, onLogout }) {
   return (
     <div style={{ padding: "20px 0 20px" }}>
       <AccountCard userEmail={userEmail} onSaveAccount={onSaveAccount} onLogout={onLogout} />
+      <InstallCard installed={installed} canInstall={canInstall} isIOS={isIOS} onInstall={onInstall} />
 
       <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
         <div style={{ flex: 1, background: colors.surface, borderRadius: 14, padding: 14, textAlign: "center" }}>
@@ -1929,6 +1964,9 @@ export default function App() {
   const [stats, setStats] = useState({ checkinCount: 0, venueCount: 0, friendCount: 0 });
   const [prefillVenue, setPrefillVenue] = useState("");
   const [presetVenue, setPresetVenue] = useState(null);
+  const [inviterName, setInviterName] = useState(null);
+  const [installEvent, setInstallEvent] = useState(null);
+  const [installed, setInstalled] = useState(() => isStandaloneDisplay());
 
   useEffect(() => {
     const init = async () => {
@@ -1965,6 +2003,56 @@ export default function App() {
     });
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  // Looks up the name behind a ?invite= link so NameGate can greet a new arrival by
+  // name ("Gary invited you to NIGHTLY") instead of the generic prompt. Read-only —
+  // the actual friendship row is created in handleSetName once they pick a name.
+  useEffect(() => {
+    if (!session) return;
+    const inviterId = new URLSearchParams(window.location.search).get("invite");
+    if (!inviterId || inviterId === session.user.id) return;
+    let cancelled = false;
+    supabase
+      .from("profiles")
+      .select("name")
+      .eq("id", inviterId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled && data) setInviterName(data.name);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id]);
+
+  // Captures the browser's native install prompt (Android/Chrome/Edge/desktop Chrome)
+  // so the "install NIGHTLY" button on the You tab can trigger it on demand instead of
+  // waiting for the browser's own address-bar icon. Safari (iOS/macOS) never fires this
+  // event — InstallCard falls back to manual "Add to Home Screen" instructions there.
+  useEffect(() => {
+    const onBeforeInstall = (e) => {
+      e.preventDefault();
+      setInstallEvent(e);
+    };
+    const onInstalled = () => {
+      setInstalled(true);
+      setInstallEvent(null);
+    };
+    window.addEventListener("beforeinstallprompt", onBeforeInstall);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  const promptInstall = async () => {
+    if (!installEvent) return;
+    installEvent.prompt();
+    const choice = await installEvent.userChoice;
+    if (choice.outcome === "accepted") setInstalled(true);
+    setInstallEvent(null);
+  };
 
   // Keeps profile in sync with whichever account is currently active, and handles pending
   // invite links once a profile exists — runs on the first sign-in and again any time the
@@ -2214,9 +2302,12 @@ export default function App() {
       const crewInviteId = params.get("crew");
       if (inviterId && inviterId !== session.user.id) {
         await supabase.from("friendships").insert({ user_id_a: session.user.id, user_id_b: inviterId });
+        loadFriends();
+        loadStats();
       }
       if (crewInviteId) {
         await supabase.from("crew_members").insert({ crew_id: crewInviteId, user_id: session.user.id, user_name: name });
+        loadCrews();
       }
       if (inviterId || crewInviteId) window.history.replaceState({}, "", window.location.pathname);
     } catch (e) {
@@ -2320,7 +2411,7 @@ export default function App() {
         {loading ? (
           <div style={{ padding: 60, textAlign: "center", color: colors.textMuted }}>loading…</div>
         ) : !profile ? (
-          <NameGate onSet={handleSetName} busy={settingUp} onSendMagicLink={sendMagicLink} />
+          <NameGate onSet={handleSetName} busy={settingUp} onSendMagicLink={sendMagicLink} inviterName={inviterName} />
         ) : (
           <>
             <div style={{ padding: "20px 20px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -2368,7 +2459,16 @@ export default function App() {
                   onRemoveFriend={removeFriend}
                 />
               ) : view === "you" ? (
-                <BadgesScreen stats={stats} userEmail={session.user.email} onSaveAccount={saveAccount} onLogout={logout} />
+                <BadgesScreen
+                  stats={stats}
+                  userEmail={session.user.email}
+                  onSaveAccount={saveAccount}
+                  onLogout={logout}
+                  installed={installed}
+                  canInstall={!!installEvent}
+                  isIOS={isIOSDevice()}
+                  onInstall={promptInstall}
+                />
               ) : (
                 <FeedScreen
                   groups={groups}
