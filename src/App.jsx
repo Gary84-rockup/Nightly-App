@@ -2,27 +2,27 @@ import React, { useState, useEffect, useCallback } from "react";
 import { supabase } from "./supabaseClient";
 
 const colors = {
-  bg: "#0A0612",
-  surface: "#1A1226",
-  surfaceRaised: "#22182F",
-  line: "#2E2140",
-  text: "#F2EEFA",
-  // Lightened from #8C7FA8 2026-08-21 — measured ~3.4:1 against several of the
-  // dark card backgrounds it sits on (below WCAG AA's 4.5:1 for text this small).
-  // #A79BC4 clears 6:1+ against bg/surface while staying clearly "muted".
-  textMuted: "#A79BC4",
+  bg: "#1C0E0A",
+  surface: "#2B1712",
+  surfaceRaised: "#38201A",
+  line: "#4A2C22",
+  text: "#FBEEE4",
+  // Lightened from a too-dark original 2026-08-21 for WCAG AA contrast against
+  // dark card backgrounds; re-picked for the Sunset Warm palette 2026-08-21,
+  // same brightness/muted intent carried over from the original fix.
+  textMuted: "#D3A98E",
   danger: "#C15B4A",
 };
 
 const VIBES = {
-  chill: { label: "Chill", color: "#34E4EA", emoji: "🌙", gradient: "linear-gradient(135deg, #14282e, #1A1226)" },
-  busy: { label: "Busy", color: "#FFC24B", emoji: "🔥", gradient: "linear-gradient(135deg, #2e2414, #1A1226)" },
-  lit: { label: "Lit", color: "#FF3D9A", emoji: "⚡", gradient: "linear-gradient(135deg, #2e1424, #1A1226)" },
-  // #6B5F82 (2026-08-21: lightened to #9187B0) measured ~3.4:1 as the pill's own
-  // background against its dark bg.color text — same fix as textMuted above, plus
-  // a two-tone gradient (was a flat single-color fill) so Dead/Quiet cards read as
-  // distinct cards rather than one undifferentiated dark block.
-  dead: { label: "Dead", color: "#9187B0", emoji: "💤", gradient: "linear-gradient(135deg, #221A33, #170F22)" },
+  chill: { label: "Chill", color: "#4ECDC4", emoji: "🌙", gradient: "linear-gradient(135deg, #1B2E2A, #2B1712)" },
+  busy: { label: "Busy", color: "#FFB454", emoji: "🔥", gradient: "linear-gradient(135deg, #332411, #2B1712)" },
+  lit: { label: "Lit", color: "#FF6B4A", emoji: "⚡", gradient: "linear-gradient(135deg, #331A12, #2B1712)" },
+  // Lightened 2026-08-21 for contrast, same fix as textMuted above, plus a
+  // two-tone gradient (was a flat single-color fill) so Dead/Quiet cards read
+  // as distinct cards rather than one undifferentiated dark block. Re-picked
+  // for the Sunset Warm palette 2026-08-21.
+  dead: { label: "Dead", color: "#B08968", emoji: "💤", gradient: "linear-gradient(135deg, #2A2019, #1F1712)" },
 };
 
 // Optional "what's on" tag per check-in — a small fixed set rather than
@@ -53,6 +53,12 @@ const BADGES = [
 ];
 
 const STAT_NOUNS = { checkinCount: "check-in", venueCount: "venue", friendCount: "friend" };
+
+const SCREEN_TITLES = { feed: "who's out", checkin: "plan ahead", crew: "your crew", friends: "friends", you: "you" };
+
+// DICE-inspired venue cards use a real photo per vibe instead of a flat
+// colour wash — "lit" has no photo yet, so it keeps the gradient fallback.
+const VIBE_PHOTOS = { busy: "/vibes/busy.jpg", chill: "/vibes/chill.jpg", dead: "/vibes/dead.jpg" };
 function statNoun(statKey, count) {
   const word = STAT_NOUNS[statKey] || "";
   return count === 1 ? word : `${word}s`;
@@ -231,7 +237,7 @@ function Button({ children, onClick, variant = "primary", accent, style, disable
     opacity: disabled ? 0.4 : 1,
   };
   const variants = {
-    primary: { background: accent || "#FF3D9A", color: "#0A0612" },
+    primary: { background: accent || "#FF6B4A", color: "#1C0E0A" },
     ghost: { background: "transparent", color: colors.textMuted, border: `1px solid ${colors.line}`, fontWeight: 500 },
     danger: { background: "transparent", color: colors.danger, border: `1px solid ${colors.danger}` },
   };
@@ -271,7 +277,7 @@ function NameGate({ onSet, busy, onSendMagicLink, inviterName }) {
 
   return (
     <div style={{ padding: "70px 24px", textAlign: "center" }}>
-      <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 13, color: "#FF3D9A", letterSpacing: "0.1em", marginBottom: 6 }}>
+      <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 13, color: "#FF6B4A", letterSpacing: "0.1em", marginBottom: 6 }}>
         NIGHTLY
       </div>
       <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 24, color: colors.text, marginBottom: 8 }}>
@@ -325,7 +331,7 @@ function NameGate({ onSet, busy, onSendMagicLink, inviterName }) {
           </Button>
           <button
             onClick={() => setShowSignIn(true)}
-            style={{ background: "none", border: "none", color: "#34E4EA", fontFamily: bodyFont, fontSize: 12, cursor: "pointer", fontWeight: 600 }}
+            style={{ background: "none", border: "none", color: "#4ECDC4", fontFamily: bodyFont, fontSize: 12, cursor: "pointer", fontWeight: 600 }}
           >
             already saved an account? sign in
           </button>
@@ -565,9 +571,9 @@ function CheckInForm({ onCreate, onCreatePlan, onCancel, initialVenueQuery, pres
                 flex: 1,
                 padding: "9px 0",
                 borderRadius: 10,
-                border: `1px solid ${mode === m.key ? "#FF3D9A" : colors.line}`,
-                background: mode === m.key ? "#FF3D9A22" : "transparent",
-                color: mode === m.key ? "#FF3D9A" : colors.textMuted,
+                border: `1px solid ${mode === m.key ? "#FF6B4A" : colors.line}`,
+                background: mode === m.key ? "#FF6B4A22" : "transparent",
+                color: mode === m.key ? "#FF6B4A" : colors.textMuted,
                 fontFamily: bodyFont,
                 fontSize: 12.5,
                 fontWeight: 700,
@@ -589,13 +595,13 @@ function CheckInForm({ onCreate, onCreatePlan, onCancel, initialVenueQuery, pres
             justifyContent: "space-between",
             padding: "12px 14px",
             borderRadius: 10,
-            background: "#14282e",
-            border: "1px solid #34E4EA66",
+            background: "#1B2E2A",
+            border: "1px solid #4ECDC466",
             marginBottom: 14,
           }}
         >
           <span style={{ fontFamily: bodyFont, fontSize: 13.5, color: colors.text, fontWeight: 600 }}>📍 {presetVenue.name}</span>
-          <span style={{ fontFamily: monoFont, fontSize: 10, color: "#34E4EA" }}>✓ already spotted</span>
+          <span style={{ fontFamily: monoFont, fontSize: 10, color: "#4ECDC4" }}>✓ already spotted</span>
         </div>
       ) : (
         <>
@@ -615,7 +621,7 @@ function CheckInForm({ onCreate, onCreatePlan, onCancel, initialVenueQuery, pres
                 : "location off"}
             </span>
             {(geo.status === "denied" || geo.status === "unavailable" || geo.status === "unsupported" || geo.status === "idle") && (
-              <button onClick={geo.request} style={{ background: "none", border: "none", color: "#34E4EA", fontSize: 10.5, fontFamily: bodyFont, cursor: "pointer", fontWeight: 700, padding: 0 }}>
+              <button onClick={geo.request} style={{ background: "none", border: "none", color: "#4ECDC4", fontSize: 10.5, fontFamily: bodyFont, cursor: "pointer", fontWeight: 700, padding: 0 }}>
                 {geo.status === "denied" ? "check browser settings" : "retry"}
               </button>
             )}
@@ -637,7 +643,7 @@ function CheckInForm({ onCreate, onCreatePlan, onCancel, initialVenueQuery, pres
               <span>couldn't load nearby spots — search still works below.</span>
               <button
                 onClick={() => setNearbyRetryCount((c) => c + 1)}
-                style={{ background: "none", border: "none", color: "#34E4EA", fontSize: 11, fontFamily: bodyFont, cursor: "pointer", fontWeight: 700, padding: 0, marginLeft: 8, flexShrink: 0 }}
+                style={{ background: "none", border: "none", color: "#4ECDC4", fontSize: 11, fontFamily: bodyFont, cursor: "pointer", fontWeight: 700, padding: 0, marginLeft: 8, flexShrink: 0 }}
               >
                 retry
               </button>
@@ -652,7 +658,7 @@ function CheckInForm({ onCreate, onCreatePlan, onCancel, initialVenueQuery, pres
                   style={{ flex: "0 0 auto", minWidth: 120, maxWidth: 150, background: colors.surfaceRaised, border: `1px solid ${colors.line}`, borderRadius: 10, padding: "8px 10px", cursor: "pointer" }}
                 >
                   <div style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 12, color: colors.text, marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{v.name}</div>
-                  <div style={{ fontFamily: monoFont, fontSize: 10, color: "#34E4EA" }}>{formatDistance(v.distance)} away</div>
+                  <div style={{ fontFamily: monoFont, fontSize: 10, color: "#4ECDC4" }}>{formatDistance(v.distance)} away</div>
                 </div>
               ))}
             </div>
@@ -679,7 +685,7 @@ function CheckInForm({ onCreate, onCreatePlan, onCancel, initialVenueQuery, pres
               </div>
             )}
           </div>
-          <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: selectedVenue ? "#34E4EA" : colors.textMuted, marginBottom: 14 }}>
+          <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: selectedVenue ? "#4ECDC4" : colors.textMuted, marginBottom: 14 }}>
             {selectedVenue ? "✓ verified venue" : "pick a real place from the list"}
           </div>
         </>
@@ -707,9 +713,9 @@ function CheckInForm({ onCreate, onCreatePlan, onCancel, initialVenueQuery, pres
             style={{
               padding: "7px 11px",
               borderRadius: 9,
-              border: `1px solid ${genre === key ? "#FF3D9A" : colors.line}`,
-              background: genre === key ? "#FF3D9A22" : "transparent",
-              color: genre === key ? "#FF3D9A" : colors.textMuted,
+              border: `1px solid ${genre === key ? "#FF6B4A" : colors.line}`,
+              background: genre === key ? "#FF6B4A22" : "transparent",
+              color: genre === key ? "#FF6B4A" : colors.textMuted,
               fontFamily: bodyFont,
               fontSize: 12,
               fontWeight: 700,
@@ -772,7 +778,7 @@ function CheckInForm({ onCreate, onCreatePlan, onCancel, initialVenueQuery, pres
               <Button
                 key={d.date}
                 variant={plannedDate === d.date ? "primary" : "ghost"}
-                accent="#FF3D9A"
+                accent="#FF6B4A"
                 onClick={() => setPlannedDate(d.date)}
                 style={{ minWidth: 62 }}
               >
@@ -788,7 +794,7 @@ function CheckInForm({ onCreate, onCreatePlan, onCancel, initialVenueQuery, pres
       <label style={label}>visible for</label>
       <div style={{ display: "flex", gap: 6, marginBottom: 20 }}>
         {[2, 3, 4].map((h) => (
-          <Button key={h} variant={hours === h ? "primary" : "ghost"} accent="#34E4EA" onClick={() => setHours(h)} style={{ flex: 1 }}>
+          <Button key={h} variant={hours === h ? "primary" : "ghost"} accent="#4ECDC4" onClick={() => setHours(h)} style={{ flex: 1 }}>
             {h}h
           </Button>
         ))}
@@ -870,88 +876,120 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
   const vibeCounts = {};
   group.checkins.forEach((c) => { vibeCounts[c.vibe] = (vibeCounts[c.vibe] || 0) + 1; });
   const topVibeEntry = Object.entries(vibeCounts).sort((a, b) => b[1] - a[1])[0];
+  const topVibeKey = topVibeEntry ? topVibeEntry[0] : null;
   const v = topVibeEntry
     ? VIBES[topVibeEntry[0]]
-    : { label: "Quiet for now", color: "#9187B0", emoji: "🌑", gradient: "linear-gradient(135deg, #221A33, #170F22)" };
+    : { label: "Quiet for now", color: "#B08968", emoji: "🌑", gradient: "linear-gradient(135deg, #2A2019, #1F1712)" };
   const mine = group.checkins.find((c) => c.user_id === myId);
   const isPumping = group.checkins.length >= 5;
+  const photo = VIBE_PHOTOS[topVibeKey || "dead"];
 
   const genreCounts = {};
   group.checkins.forEach((c) => { if (c.genre) genreCounts[c.genre] = (genreCounts[c.genre] || 0) + 1; });
   const topGenreEntry = Object.entries(genreCounts).sort((a, b) => b[1] - a[1])[0];
   const topGenre = topGenreEntry ? GENRE_TAGS[topGenreEntry[0]] : null;
 
+  const friendCount = friendIds ? group.checkins.filter((c) => friendIds.has(c.user_id)).length : 0;
+
   return (
     <div
       onClick={() => setExpanded((e) => !e)}
-      className={isPumping ? "nightly-pulse" : ""}
       style={{
-        background: v.gradient,
-        border: `1px solid ${v.color}44`,
+        background: colors.surface,
+        border: `1px solid ${colors.line}`,
         borderRadius: 18,
-        padding: 16,
+        overflow: "hidden",
         marginBottom: 14,
-        boxShadow: `0 0 24px -8px ${v.color}66`,
         cursor: "pointer",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
-          {group.venue.id && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onToggleFavorite(group.venue.id); }}
-              style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 16, flexShrink: 0 }}
-              aria-label="Toggle favourite"
-            >
-              {isFavorite ? "⭐" : "☆"}
-            </button>
-          )}
-          <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 17, color: colors.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {group.venue.name}
+      <div style={{ height: 130, position: "relative", overflow: "hidden", background: v.gradient }}>
+        {photo && (
+          <img src={photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        )}
+        <div style={{ position: "absolute", inset: 0, background: `linear-gradient(180deg, transparent 40%, ${colors.surface}E6 100%)` }} />
+        {topGenre && (
+          <div style={{ position: "absolute", top: 10, left: 10, fontFamily: monoFont, fontSize: 10, fontWeight: 700, color: colors.text, background: `${colors.bg}CC`, borderRadius: 20, padding: "4px 9px" }}>
+            {topGenre.emoji} {topGenre.label}
           </div>
-        </div>
-        <span
+        )}
+        <div
+          className={isPumping ? "nightly-pulse" : ""}
           style={{
+            "--pulse-color": `${v.color}99`,
+            position: "absolute",
+            top: 10,
+            right: 10,
             fontFamily: monoFont,
             fontSize: 10,
             fontWeight: 700,
             color: colors.bg,
             background: v.color,
             borderRadius: 20,
-            padding: "3px 10px",
+            padding: "4px 9px",
             whiteSpace: "nowrap",
-            flexShrink: 0,
-            marginLeft: 8,
           }}
         >
           {v.emoji} {v.label.toUpperCase()}
-        </span>
+        </div>
+        {group.checkins.length > 0 && (
+          <div style={{ position: "absolute", bottom: 10, left: 11, display: "flex", alignItems: "center" }}>
+            {group.checkins.slice(0, 3).map((c, i) => (
+              <div
+                key={c.id}
+                style={{
+                  width: 21,
+                  height: 21,
+                  borderRadius: "50%",
+                  background: `linear-gradient(135deg, ${colors.textMuted}99, ${colors.surfaceRaised})`,
+                  border: `2px solid ${colors.surface}`,
+                  marginLeft: i > 0 ? -7 : 0,
+                }}
+              />
+            ))}
+            {group.checkins.length > 3 && (
+              <div style={{ marginLeft: 5, fontFamily: monoFont, fontSize: 10, color: colors.text, fontWeight: 700 }}>
+                +{group.checkins.length - 3}
+              </div>
+            )}
+          </div>
+        )}
       </div>
-      {isOpenLate(group.venue.opening_hours) && (
-        <div style={{ fontFamily: monoFont, fontSize: 9.5, color: "#34E4EA", fontWeight: 700, marginBottom: 8 }}>
-          🌃 OPEN LATE
+
+      <div style={{ padding: "13px 15px 15px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 5 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
+            {group.venue.id && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onToggleFavorite(group.venue.id); }}
+                style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 16, flexShrink: 0 }}
+                aria-label="Toggle favourite"
+              >
+                {isFavorite ? "⭐" : "☆"}
+              </button>
+            )}
+            <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 16, color: colors.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {group.venue.name}
+            </div>
+          </div>
+          <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted, flexShrink: 0 }}>{expanded ? "▲" : "▼"}</div>
         </div>
-      )}
-      {topGenre && (
-        <div style={{ fontFamily: monoFont, fontSize: 9.5, color: "#FF3D9A", fontWeight: 700, marginBottom: 8 }}>
-          {topGenre.emoji} {topGenre.label.toUpperCase()}
-        </div>
-      )}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        {isOpenLate(group.venue.opening_hours) && (
+          <div style={{ fontFamily: monoFont, fontSize: 9.5, color: "#4ECDC4", fontWeight: 700, marginBottom: 6 }}>
+            🌃 OPEN LATE
+          </div>
+        )}
         <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.textMuted, fontWeight: 600 }}>
           {distance != null && `📍 ${formatDistance(distance)} · `}
           {group.checkins.length === 0
             ? "nobody's checked in — be the first"
             : `🎉 ${group.checkins.length} ${group.checkins.length === 1 ? "person" : "people"} here right now`}
         </div>
-        <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted }}>{expanded ? "▲" : "▼"}</div>
-      </div>
-      {friendIds && group.checkins.some((c) => friendIds.has(c.user_id)) && (
-        <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: "#FFC24B", fontWeight: 700, marginTop: 4 }}>
-          👋 {group.checkins.filter((c) => friendIds.has(c.user_id)).length} of them {group.checkins.filter((c) => friendIds.has(c.user_id)).length === 1 ? "is" : "are"} your friend
-          {group.checkins.filter((c) => friendIds.has(c.user_id)).length === 1 ? "" : "s"}
-        </div>
-      )}
+        {friendCount > 0 && (
+          <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: "#FFB454", fontWeight: 700, marginTop: 4 }}>
+            👋 {friendCount} of them {friendCount === 1 ? "is" : "are"} your friend{friendCount === 1 ? "" : "s"}
+          </div>
+        )}
 
       {expanded && (
         <div style={{ marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
@@ -971,7 +1009,7 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
                   color: colors.text,
                   marginBottom: 6,
                   fontWeight: isFriend ? 700 : 500,
-                  background: isFriend ? "#FFC24B22" : "transparent",
+                  background: isFriend ? "#FFB45422" : "transparent",
                   borderRadius: 6,
                   padding: isFriend ? "3px 6px" : 0,
                 }}
@@ -982,11 +1020,11 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
                   <span style={{ color: VIBES[c.vibe].color }}>{VIBES[c.vibe].emoji}</span>
                   <span>{identityVisible ? c.user_name : "someone"}</span>
                   {c.genre && GENRE_TAGS[c.genre] && (
-                    <span style={{ color: "#FF3D9A", fontSize: 10.5 }}>
+                    <span style={{ color: "#FF6B4A", fontSize: 10.5 }}>
                       · {GENRE_TAGS[c.genre].emoji} {GENRE_TAGS[c.genre].label}
                     </span>
                   )}
-                  {isFriend && <span style={{ color: "#FFC24B", fontSize: 10 }}>· friend</span>}
+                  {isFriend && <span style={{ color: "#FFB454", fontSize: 10 }}>· friend</span>}
                 </div>
                 {c.note ? <div style={{ color: colors.textMuted, marginTop: 2 }}>"{c.note}"</div> : null}
                 {c.photo_url && (
@@ -1014,8 +1052,8 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
                             fontSize: 11,
                             padding: "2px 6px",
                             borderRadius: 8,
-                            border: `1px solid ${reacted ? "#FF3D9A" : colors.line}`,
-                            background: reacted ? "#FF3D9A22" : "transparent",
+                            border: `1px solid ${reacted ? "#FF6B4A" : colors.line}`,
+                            background: reacted ? "#FF6B4A22" : "transparent",
                             color: colors.text,
                             cursor: "pointer",
                             opacity: count === 0 ? 0.45 : 1,
@@ -1033,7 +1071,7 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
             );
           })}
           {group.venue.osm_website && (
-            <a href={group.venue.osm_website} target="_blank" rel="noopener noreferrer" style={{ fontFamily: bodyFont, fontSize: 11, color: "#34E4EA", textDecoration: "underline", fontWeight: 600 }}>
+            <a href={group.venue.osm_website} target="_blank" rel="noopener noreferrer" style={{ fontFamily: bodyFont, fontSize: 11, color: "#4ECDC4", textDecoration: "underline", fontWeight: 600 }}>
               🌐 venue website
             </a>
           )}
@@ -1071,7 +1109,7 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
           {crews && crews.length > 0 && (
             <div style={{ marginTop: 8 }}>
               {called ? (
-                <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: "#FF3D9A", fontWeight: 700 }}>
+                <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: "#FF6B4A", fontWeight: 700 }}>
                   📣 crew called!
                 </div>
               ) : pickingCrew ? (
@@ -1107,6 +1145,7 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -1127,8 +1166,8 @@ function PlanCard({ plan, interest, onToggleInterest, friendIds, myId }) {
   return (
     <div
       style={{
-        background: "linear-gradient(135deg, #14282e, #1A1226)",
-        border: `1px solid ${mine ? "#34E4EA88" : colors.line}`,
+        background: "linear-gradient(135deg, #1B2E2A, #2B1712)",
+        border: `1px solid ${mine ? "#4ECDC488" : colors.line}`,
         borderRadius: 14,
         padding: 13,
         marginBottom: 10,
@@ -1139,11 +1178,11 @@ function PlanCard({ plan, interest, onToggleInterest, friendIds, myId }) {
         <span style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 13, color: colors.text }}>
           {identityVisible ? plan.user_name : "someone"}
         </span>
-        <span style={{ fontFamily: monoFont, fontSize: 10.5, color: "#34E4EA", fontWeight: 700 }}>
+        <span style={{ fontFamily: monoFont, fontSize: 10.5, color: "#4ECDC4", fontWeight: 700 }}>
           📅 {formatPlanDate(plan.planned_date)}
         </span>
         {plan.genre && GENRE_TAGS[plan.genre] && (
-          <span style={{ fontFamily: bodyFont, fontSize: 11, color: "#FF3D9A" }}>
+          <span style={{ fontFamily: bodyFont, fontSize: 11, color: "#FF6B4A" }}>
             {GENRE_TAGS[plan.genre].emoji} {GENRE_TAGS[plan.genre].label}
           </span>
         )}
@@ -1154,7 +1193,7 @@ function PlanCard({ plan, interest, onToggleInterest, friendIds, myId }) {
       </div>
       <Button
         variant={mine ? "primary" : "ghost"}
-        accent="#34E4EA"
+        accent="#4ECDC4"
         onClick={() => onToggleInterest(plan.id)}
         style={{ padding: "6px 12px", fontSize: 11.5 }}
       >
@@ -1179,7 +1218,7 @@ function EventCard({ event, interest, onToggleInterest, onCheckInHere, crews, on
         fullWidth
           ? {
               background: colors.surfaceRaised,
-              border: `1px solid ${mine ? "#FF3D9A88" : colors.line}`,
+              border: `1px solid ${mine ? "#FF6B4A88" : colors.line}`,
               borderRadius: 18,
               padding: 16,
               marginBottom: 14,
@@ -1190,7 +1229,7 @@ function EventCard({ event, interest, onToggleInterest, onCheckInHere, crews, on
               minWidth: 160,
               maxWidth: expanded ? 240 : 190,
               background: colors.surfaceRaised,
-              border: `1px solid ${mine ? "#FF3D9A88" : colors.line}`,
+              border: `1px solid ${mine ? "#FF6B4A88" : colors.line}`,
               borderRadius: 10,
               padding: "10px 12px",
               cursor: "pointer",
@@ -1200,7 +1239,7 @@ function EventCard({ event, interest, onToggleInterest, onCheckInHere, crews, on
       <div style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 12.5, color: colors.text, marginBottom: 4, lineHeight: 1.3 }}>
         {cat.emoji} {event.title}
       </div>
-      <div style={{ fontFamily: monoFont, fontSize: 10, color: "#FF3D9A", marginBottom: 2 }}>{formatEventDate(event.start)}</div>
+      <div style={{ fontFamily: monoFont, fontSize: 10, color: "#FF6B4A", marginBottom: 2 }}>{formatEventDate(event.start)}</div>
       {distance != null && (
         <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: colors.textMuted, marginBottom: 2 }}>📍 {formatDistance(distance)} away</div>
       )}
@@ -1210,7 +1249,7 @@ function EventCard({ event, interest, onToggleInterest, onCheckInHere, crews, on
         </div>
       )}
       {count > 0 && (
-        <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: mine ? "#FF3D9A" : colors.textMuted, marginTop: 4, fontWeight: mine ? 700 : 500 }}>
+        <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: mine ? "#FF6B4A" : colors.textMuted, marginTop: 4, fontWeight: mine ? 700 : 500 }}>
           🙋 {count} interested{mine ? " (you)" : ""}
         </div>
       )}
@@ -1230,7 +1269,7 @@ function EventCard({ event, interest, onToggleInterest, onCheckInHere, crews, on
             href={`https://www.google.com/search?q=${encodeURIComponent(`${event.title} tickets`)}`}
             target="_blank"
             rel="noopener noreferrer"
-            style={{ fontFamily: bodyFont, fontSize: 11, color: "#34E4EA", textDecoration: "underline", fontWeight: 600 }}
+            style={{ fontFamily: bodyFont, fontSize: 11, color: "#4ECDC4", textDecoration: "underline", fontWeight: 600 }}
           >
             🎟️ search for tickets
           </a>
@@ -1241,7 +1280,7 @@ function EventCard({ event, interest, onToggleInterest, onCheckInHere, crews, on
           )}
           <Button
             variant={mine ? "primary" : "ghost"}
-            accent="#FF3D9A"
+            accent="#FF6B4A"
             onClick={() => onToggleInterest(event.id, event.title)}
             style={{ padding: "7px 10px", fontSize: 11.5 }}
           >
@@ -1250,7 +1289,7 @@ function EventCard({ event, interest, onToggleInterest, onCheckInHere, crews, on
 
           {crews && crews.length > 0 && (
             called ? (
-              <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: "#FF3D9A", fontWeight: 700 }}>📣 crew called!</div>
+              <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: "#FF6B4A", fontWeight: 700 }}>📣 crew called!</div>
             ) : pickingCrew ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted, marginBottom: 2 }}>call which crew?</div>
@@ -1285,36 +1324,77 @@ function EventCard({ event, interest, onToggleInterest, onCheckInHere, crews, on
   );
 }
 
-function BottomNav({ view, onNavigate }) {
-  const items = [
-    { id: "feed", label: "Feed", emoji: "🌆" },
-    { id: "checkin", label: "Plan", emoji: "📅" },
-    { id: "crew", label: "Crew", emoji: "👥" },
-    { id: "friends", label: "Friends", emoji: "👋" },
-    { id: "you", label: "You", emoji: "🏆" },
+// Home screen: a "You" summary banner plus a 2x2 grid of live-count tiles.
+// Replaced the persistent bottom tab bar 2026-08-21 — the hub surfaces real
+// counts (who's out, how many plans) at a glance instead of static icons,
+// at the cost of an extra tap back through the hub when hopping between
+// sections. Each tile/banner drills into its full screen via a back button
+// in the shared header (see App()).
+function HubScreen({ profile, stats, peopleOutCount, plansCount, crewsCount, friendsCount, onNavigate }) {
+  const unlockedCount = BADGES.filter((b) => stats[b.statKey] >= b.target).length;
+
+  const tiles = [
+    { id: "feed", label: "Feed", emoji: "🌆", stat: peopleOutCount, sub: peopleOutCount === 1 ? "person out now" : "people out now" },
+    { id: "checkin", label: "Plan", emoji: "📅", stat: plansCount, sub: plansCount === 1 ? "plan this weekend" : "plans this weekend" },
+    { id: "crew", label: "Crew", emoji: "👥", stat: crewsCount, sub: crewsCount === 1 ? "crew" : "crews" },
+    { id: "friends", label: "Friends", emoji: "👋", stat: friendsCount, sub: friendsCount === 1 ? "friend" : "friends" },
   ];
+
   return (
-    <div style={{ display: "flex", borderTop: `1px solid ${colors.line}`, background: colors.surface }}>
-      {items.map((it) => (
-        <button
-          key={it.id}
-          onClick={() => onNavigate(it.id)}
-          style={{
-            flex: 1,
-            padding: "12px 0 14px",
-            background: "transparent",
-            border: "none",
-            cursor: "pointer",
-            fontFamily: bodyFont,
-            fontSize: 11,
-            fontWeight: 700,
-            color: view === it.id ? "#FF3D9A" : colors.textMuted,
-          }}
-        >
-          <div style={{ fontSize: 16, marginBottom: 2 }}>{it.emoji}</div>
-          {it.label}
-        </button>
-      ))}
+    <div style={{ padding: "4px 0 20px" }}>
+      <button
+        onClick={() => onNavigate("you")}
+        style={{
+          width: "100%",
+          textAlign: "left",
+          display: "flex",
+          alignItems: "center",
+          gap: 14,
+          background: "linear-gradient(135deg, #331A12, #2B1712)",
+          border: `1px solid ${colors.line}`,
+          borderRadius: 18,
+          padding: 16,
+          marginBottom: 14,
+          cursor: "pointer",
+        }}
+      >
+        <Avatar url={profile.avatar_url} name={profile.name} size={52} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 17, color: colors.text }}>{profile.name}</div>
+          <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginTop: 2 }}>
+            {stats.checkinCount} check-ins · {stats.venueCount} venues · {unlockedCount}/{BADGES.length} badges
+          </div>
+        </div>
+        <div style={{ fontFamily: monoFont, fontSize: 11, color: "#FF6B4A", fontWeight: 700, flexShrink: 0 }}>view →</div>
+      </button>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        {tiles.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => onNavigate(t.id)}
+            style={{
+              aspectRatio: "1",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              textAlign: "left",
+              background: colors.surface,
+              border: `1px solid ${colors.line}`,
+              borderRadius: 16,
+              padding: 14,
+              cursor: "pointer",
+            }}
+          >
+            <div style={{ fontSize: 22 }}>{t.emoji}</div>
+            <div>
+              <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 26, color: colors.text }}>{t.stat}</div>
+              <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted, fontWeight: 600 }}>{t.sub}</div>
+              <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.text, fontWeight: 700, marginTop: 6 }}>{t.label}</div>
+            </div>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1421,7 +1501,7 @@ function CrewScreen({ crews, checkins, tonightCrew, setTonightCrew, onCreateCrew
         </div>
 
         {allCheckedIn && (
-          <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: "#FF3D9A", fontWeight: 700, marginBottom: 12 }}>
+          <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: "#FF6B4A", fontWeight: 700, marginBottom: 12 }}>
             🎉 everyone's checked in!
           </div>
         )}
@@ -1469,7 +1549,7 @@ function CrewScreen({ crews, checkins, tonightCrew, setTonightCrew, onCreateCrew
                 style={{ padding: "9px 12px", fontSize: 12.5, color: colors.text, cursor: "pointer", borderBottom: `1px solid ${colors.line}`, display: "flex", justifyContent: "space-between" }}
               >
                 <span>{r.name}</span>
-                <span style={{ color: "#FF3D9A", fontWeight: 700 }}>+ add</span>
+                <span style={{ color: "#FF6B4A", fontWeight: 700 }}>+ add</span>
               </div>
             ))}
           </div>
@@ -1535,7 +1615,7 @@ function CrewScreen({ crews, checkins, tonightCrew, setTonightCrew, onCreateCrew
               width: "100%",
               textAlign: "left",
               background: colors.surface,
-              border: `1px solid ${isTonight ? "#FF3D9A" : colors.line}`,
+              border: `1px solid ${isTonight ? "#FF6B4A" : colors.line}`,
               borderRadius: 12,
               padding: 14,
               marginBottom: 10,
@@ -1543,7 +1623,7 @@ function CrewScreen({ crews, checkins, tonightCrew, setTonightCrew, onCreateCrew
             }}
           >
             <div style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 14, color: colors.text }}>
-              {c.name} {isTonight && <span style={{ color: "#FF3D9A", fontSize: 11 }}>· tonight</span>}
+              {c.name} {isTonight && <span style={{ color: "#FF6B4A", fontSize: 11 }}>· tonight</span>}
             </div>
             <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: colors.textMuted, marginTop: 2 }}>
               {memberCount} {memberCount === 1 ? "member" : "members"}
@@ -1593,8 +1673,8 @@ function FriendsScreen({ myId, friends, onSearchProfiles, onAddFriend, onRemoveF
     <div style={{ padding: "20px 0 20px" }}>
       <div
         style={{
-          background: "linear-gradient(135deg, #2e1424, #14282e)",
-          border: "1px solid #FF3D9A44",
+          background: "linear-gradient(135deg, #331A12, #1B2E2A)",
+          border: "1px solid #FF6B4A44",
           borderRadius: 16,
           padding: 16,
           marginBottom: 20,
@@ -1643,7 +1723,7 @@ function FriendsScreen({ myId, friends, onSearchProfiles, onAddFriend, onRemoveF
                 <Avatar url={r.avatar_url} name={r.name} size={24} />
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
               </div>
-              <span style={{ color: "#FF3D9A", fontWeight: 700, flexShrink: 0 }}>+ add</span>
+              <span style={{ color: "#FF6B4A", fontWeight: 700, flexShrink: 0 }}>+ add</span>
             </div>
           ))}
         </div>
@@ -1862,7 +1942,7 @@ function ProfileCard({ profile, onUpdateAvatar, onUpdateBio }) {
             boxSizing: "border-box",
           }}
         />
-        {bioSaved && <div style={{ fontFamily: monoFont, fontSize: 10, color: "#34E4EA", marginTop: 4 }}>saved ✓</div>}
+        {bioSaved && <div style={{ fontFamily: monoFont, fontSize: 10, color: "#4ECDC4", marginTop: 4 }}>saved ✓</div>}
       </div>
     </div>
   );
@@ -1884,26 +1964,26 @@ function BadgesScreen({ stats, userEmail, onSaveAccount, onLogout, installed, ca
 
       <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
         <div style={{ flex: 1, background: colors.surface, borderRadius: 14, padding: 14, textAlign: "center" }}>
-          <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 24, color: "#FF3D9A" }}>{stats.checkinCount}</div>
+          <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 24, color: "#FF6B4A" }}>{stats.checkinCount}</div>
           <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: colors.textMuted, fontWeight: 600 }}>check-ins</div>
         </div>
         <div style={{ flex: 1, background: colors.surface, borderRadius: 14, padding: 14, textAlign: "center" }}>
-          <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 24, color: "#34E4EA" }}>{stats.venueCount}</div>
+          <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 24, color: "#4ECDC4" }}>{stats.venueCount}</div>
           <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: colors.textMuted, fontWeight: 600 }}>venues</div>
         </div>
         <div style={{ flex: 1, background: colors.surface, borderRadius: 14, padding: 14, textAlign: "center" }}>
-          <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 24, color: "#FFC24B" }}>{stats.friendCount}</div>
+          <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 24, color: "#FFB454" }}>{stats.friendCount}</div>
           <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: colors.textMuted, fontWeight: 600 }}>friends</div>
         </div>
       </div>
 
       {nextBadge && (
-        <div style={{ background: "linear-gradient(135deg, #2e1424, #14282e)", border: "1px solid #FF3D9A44", borderRadius: 14, padding: 14, marginBottom: 20 }}>
+        <div style={{ background: "linear-gradient(135deg, #331A12, #1B2E2A)", border: "1px solid #FF6B4A44", borderRadius: 14, padding: 14, marginBottom: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
             <span style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 13, color: colors.text }}>
               {nextBadge.emoji} next up: {nextBadge.label}
             </span>
-            <span style={{ fontFamily: monoFont, fontSize: 11, color: "#FF3D9A", fontWeight: 700 }}>
+            <span style={{ fontFamily: monoFont, fontSize: 11, color: "#FF6B4A", fontWeight: 700 }}>
               {stats[nextBadge.statKey]}/{nextBadge.target}
             </span>
           </div>
@@ -1912,7 +1992,7 @@ function BadgesScreen({ stats, userEmail, onSaveAccount, onLogout, installed, ca
               style={{
                 height: "100%",
                 width: `${Math.min(100, (stats[nextBadge.statKey] / nextBadge.target) * 100)}%`,
-                background: "linear-gradient(90deg, #FF3D9A, #7C4DFF)",
+                background: "linear-gradient(90deg, #FF6B4A, #FF9F6B)",
                 borderRadius: 6,
                 transition: "width 0.4s ease",
               }}
@@ -1933,7 +2013,7 @@ function BadgesScreen({ stats, userEmail, onSaveAccount, onLogout, installed, ca
         </div>
       )}
       {unlocked.map((b) => (
-        <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "linear-gradient(135deg, #2e1424, #1A1226)", border: "1px solid #FF3D9A66", borderRadius: 14, padding: 12, marginBottom: 8, boxShadow: "0 0 20px -8px #FF3D9A66" }}>
+        <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "linear-gradient(135deg, #331A12, #2B1712)", border: "1px solid #FF6B4A66", borderRadius: 14, padding: 12, marginBottom: 8, boxShadow: "0 0 20px -8px #FF6B4A66" }}>
           <div style={{ fontSize: 26 }}>{b.emoji}</div>
           <div>
             <div style={{ fontFamily: bodyFont, fontWeight: 700, fontSize: 13.5, color: colors.text }}>{b.label}</div>
@@ -2284,8 +2364,8 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
               <div
                 key={call.id}
                 style={{
-                  background: "linear-gradient(135deg, #2e1424, #14282e)",
-                  border: "1px solid #FF3D9A88",
+                  background: "linear-gradient(135deg, #331A12, #1B2E2A)",
+                  border: "1px solid #FF6B4A88",
                   borderRadius: 14,
                   padding: 13,
                   marginBottom: 8,
@@ -2340,7 +2420,7 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
       {groups.length > 0 && (
         <Button
           onClick={surpriseMe}
-          style={{ width: "100%", marginBottom: 12, background: "linear-gradient(90deg, #FF3D9A, #7C4DFF)" }}
+          style={{ width: "100%", marginBottom: 12, background: "linear-gradient(90deg, #FF6B4A, #FF9F6B)" }}
         >
           🎲 surprise me — where should I go?
         </Button>
@@ -2349,15 +2429,15 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
       {spotlightGroup && (
         <div
           style={{
-            background: "linear-gradient(135deg, #2e1424, #14282e)",
-            border: "1px solid #FF3D9A66",
+            background: "linear-gradient(135deg, #331A12, #1B2E2A)",
+            border: "1px solid #FF6B4A66",
             borderRadius: 16,
             padding: 14,
             marginBottom: 14,
-            boxShadow: "0 0 24px -6px #FF3D9A88",
+            boxShadow: "0 0 24px -6px #FF6B4A88",
           }}
         >
-          <div style={{ fontFamily: monoFont, fontSize: 9, letterSpacing: "0.08em", color: "#FF3D9A", textTransform: "uppercase", marginBottom: 4, fontWeight: 700 }}>
+          <div style={{ fontFamily: monoFont, fontSize: 9, letterSpacing: "0.08em", color: "#FF6B4A", textTransform: "uppercase", marginBottom: 4, fontWeight: 700 }}>
             tonight's pick ✨
           </div>
           <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 16, color: colors.text, marginBottom: 8 }}>
@@ -2389,7 +2469,7 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
           <span>couldn't load everything nearby.</span>
           <button
             onClick={() => { setDiscoveryRetryCount((c) => c + 1); setEventsRetryCount((c) => c + 1); }}
-            style={{ background: "none", border: "none", color: "#34E4EA", fontSize: 11, fontFamily: bodyFont, cursor: "pointer", fontWeight: 700, padding: 0, marginLeft: 8, flexShrink: 0 }}
+            style={{ background: "none", border: "none", color: "#4ECDC4", fontSize: 11, fontFamily: bodyFont, cursor: "pointer", fontWeight: 700, padding: 0, marginLeft: 8, flexShrink: 0 }}
           >
             retry
           </button>
@@ -2455,9 +2535,9 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
                 flex: 1,
                 padding: "8px 0",
                 borderRadius: 10,
-                border: `1px solid ${sortMode === s.id ? "#FF3D9A" : colors.line}`,
-                background: sortMode === s.id ? "#FF3D9A22" : "transparent",
-                color: sortMode === s.id ? "#FF3D9A" : colors.textMuted,
+                border: `1px solid ${sortMode === s.id ? "#FF6B4A" : colors.line}`,
+                background: sortMode === s.id ? "#FF6B4A22" : "transparent",
+                color: sortMode === s.id ? "#FF6B4A" : colors.textMuted,
                 fontFamily: bodyFont,
                 fontSize: 11.5,
                 fontWeight: 700,
@@ -2483,9 +2563,9 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
                 flex: 1,
                 padding: "7px 0",
                 borderRadius: 10,
-                border: `1px solid ${f.active ? "#34E4EA" : colors.line}`,
-                background: f.active ? "#34E4EA22" : "transparent",
-                color: f.active ? "#34E4EA" : colors.textMuted,
+                border: `1px solid ${f.active ? "#4ECDC4" : colors.line}`,
+                background: f.active ? "#4ECDC422" : "transparent",
+                color: f.active ? "#4ECDC4" : colors.textMuted,
                 fontFamily: bodyFont,
                 fontSize: 11,
                 fontWeight: 700,
@@ -2507,9 +2587,9 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
               style={{
                 padding: "6px 10px",
                 borderRadius: 10,
-                border: `1px solid ${genreFilter === key ? "#FF3D9A" : colors.line}`,
-                background: genreFilter === key ? "#FF3D9A22" : "transparent",
-                color: genreFilter === key ? "#FF3D9A" : colors.textMuted,
+                border: `1px solid ${genreFilter === key ? "#FF6B4A" : colors.line}`,
+                background: genreFilter === key ? "#FF6B4A22" : "transparent",
+                color: genreFilter === key ? "#FF6B4A" : colors.textMuted,
                 fontFamily: bodyFont,
                 fontSize: 11,
                 fontWeight: 700,
@@ -2524,7 +2604,7 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
       )}
 
       {query.trim() && feedItems.length > 0 && (
-        <div style={{ fontFamily: bodyFont, fontSize: 11, color: "#34E4EA", fontWeight: 600, marginBottom: 8 }}>
+        <div style={{ fontFamily: bodyFont, fontSize: 11, color: "#4ECDC4", fontWeight: 600, marginBottom: 8 }}>
           {feedItems.length} result{feedItems.length === 1 ? "" : "s"} matching "{query}"
         </div>
       )}
@@ -2632,7 +2712,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [settingUp, setSettingUp] = useState(false);
   const [error, setError] = useState(null);
-  const [view, setView] = useState("feed");
+  const [view, setView] = useState("hub");
   const [stats, setStats] = useState({ checkinCount: 0, venueCount: 0, friendCount: 0 });
   const [prefillVenue, setPrefillVenue] = useState("");
   const [presetVenue, setPresetVenue] = useState(null);
@@ -3222,7 +3302,7 @@ export default function App() {
 
   return (
     <div style={{ minHeight: "100vh", background: colors.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, fontFamily: bodyFont }}>
-      <div style={{ width: 390, minHeight: 700, maxHeight: 760, background: colors.bg, borderRadius: 28, border: "8px solid #050308", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 30px 60px rgba(255,61,154,0.15)" }}>
+      <div style={{ width: 390, minHeight: 700, maxHeight: 760, background: colors.bg, borderRadius: 28, border: "8px solid #120904", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 30px 60px rgba(255,107,74,0.15)" }}>
         {loading ? (
           <div style={{ padding: 60, textAlign: "center", color: colors.textMuted }}>loading…</div>
         ) : !profile ? (
@@ -3231,13 +3311,22 @@ export default function App() {
           <>
             <div style={{ padding: "20px 20px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
-                <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 11, color: "#FF3D9A", letterSpacing: "0.1em" }}>NIGHTLY</div>
-                <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 20, color: colors.text }}>who's out</div>
+                <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 11, color: "#FF6B4A", letterSpacing: "0.1em" }}>NIGHTLY</div>
+                <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 20, color: colors.text }}>{SCREEN_TITLES[view] || "who's out"}</div>
               </div>
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted }}>you're</div>
-                <div style={{ fontFamily: bodyFont, fontSize: 13, color: colors.text, fontWeight: 700 }}>{profile.name}</div>
-              </div>
+              {view === "hub" ? (
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontFamily: bodyFont, fontSize: 11, color: colors.textMuted }}>you're</div>
+                  <div style={{ fontFamily: bodyFont, fontSize: 13, color: colors.text, fontWeight: 700 }}>{profile.name}</div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setView("hub")}
+                  style={{ background: "transparent", border: `1px solid ${colors.line}`, borderRadius: 10, padding: "7px 12px", color: colors.text, fontFamily: bodyFont, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}
+                >
+                  ← hub
+                </button>
+              )}
             </div>
 
             {error && (
@@ -3245,11 +3334,21 @@ export default function App() {
             )}
 
             <div style={{ flex: 1, overflowY: "auto", padding: "0 20px" }}>
-              {view === "checkin" ? (
+              {view === "hub" ? (
+                <HubScreen
+                  profile={profile}
+                  stats={stats}
+                  peopleOutCount={checkins.length}
+                  plansCount={plans.length}
+                  crewsCount={crews.length}
+                  friendsCount={friends.length}
+                  onNavigate={(id) => { if (id === "checkin") { setPrefillVenue(""); setPresetVenue(null); setCheckinInitialMode("plan"); } setView(id); }}
+                />
+              ) : view === "checkin" ? (
                 <CheckInForm
                   onCreate={checkIn}
                   onCreatePlan={createPlan}
-                  onCancel={() => { setPrefillVenue(""); setPresetVenue(null); setView("feed"); }}
+                  onCancel={() => { setPrefillVenue(""); setPresetVenue(null); setView(checkinInitialMode === "plan" ? "hub" : "feed"); }}
                   initialVenueQuery={prefillVenue}
                   presetVenue={presetVenue}
                   tonightCrew={tonightCrew}
@@ -3311,11 +3410,6 @@ export default function App() {
                 />
               )}
             </div>
-
-            <BottomNav
-              view={view}
-              onNavigate={(id) => { if (id === "checkin") { setPrefillVenue(""); setPresetVenue(null); setCheckinInitialMode("plan"); } setView(id); }}
-            />
           </>
         )}
       </div>

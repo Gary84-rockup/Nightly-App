@@ -1,2 +1,12 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: #0a0612; }
+body { background: #1c0e0a; }
+
+@keyframes nightly-pulse-ring {
+  0% { box-shadow: 0 0 0 0 var(--pulse-color, transparent); }
+  70% { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.nightly-pulse { animation: nightly-pulse-ring 1.8s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .nightly-pulse { animation: none; }
+}
