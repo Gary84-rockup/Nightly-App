@@ -18,6 +18,11 @@ const VIBES = {
   dead: { label: "Dead", color: "#6B5F82", emoji: "💤", gradient: "linear-gradient(135deg, #1A1226, #1A1226)" },
 };
 
+// Curated reaction set for individual check-ins — deliberately fixed rather than a
+// full emoji picker (would roughly double the app's bundle size for one feature on
+// this dependency-free build, see project-notes.md).
+const REACTION_EMOJIS = ["🔥", "❤️", "😂", "😮", "👏", "💀"];
+
 const BADGES = [
   { id: "first", label: "First Night Out", emoji: "🌟", statKey: "checkinCount", target: 1, desc: "Check in once" },
   { id: "regular", label: "Regular", emoji: "🍹", statKey: "checkinCount", target: 5, desc: "5 check-ins" },
@@ -583,7 +588,7 @@ function CheckInForm({ onCreate, onCancel, initialVenueQuery, presetVenue, tonig
   );
 }
 
-function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVibe, defaultExpanded, isFavorite, onToggleFavorite, friendIds, crews, onCallCrew, distance }) {
+function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVibe, defaultExpanded, isFavorite, onToggleFavorite, friendIds, crews, onCallCrew, distance, reactionsByCheckin, onToggleReaction }) {
   const [pickingCrew, setPickingCrew] = useState(false);
   const [called, setCalled] = useState(false);
   const [expanded, setExpanded] = useState(!!defaultExpanded);
@@ -685,6 +690,35 @@ function VenueCard({ group, myName, myId, onCheckOut, onCheckInHere, onUpdateVib
                 <span style={{ color: VIBES[c.vibe].color }}>{VIBES[c.vibe].emoji}</span> {c.user_name}
                 {isFriend && <span style={{ color: "#FFC24B", fontSize: 10, marginLeft: 4 }}>· friend</span>}
                 {c.note ? <span style={{ color: colors.textMuted }}> — "{c.note}"</span> : null}
+                {onToggleReaction && (
+                  <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
+                    {REACTION_EMOJIS.map((emoji) => {
+                      const r = reactionsByCheckin?.[c.id]?.[emoji];
+                      const count = r?.count || 0;
+                      const reacted = !!r?.mine;
+                      return (
+                        <button
+                          key={emoji}
+                          onClick={(e) => { e.stopPropagation(); onToggleReaction(c.id, emoji); }}
+                          style={{
+                            fontSize: 11,
+                            padding: "2px 6px",
+                            borderRadius: 8,
+                            border: `1px solid ${reacted ? "#FF3D9A" : colors.line}`,
+                            background: reacted ? "#FF3D9A22" : "transparent",
+                            color: colors.text,
+                            cursor: "pointer",
+                            opacity: count === 0 ? 0.45 : 1,
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          {emoji}
+                          {count > 0 ? ` ${count}` : ""}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -1466,7 +1500,7 @@ function BadgesScreen({ stats, userEmail, onSaveAccount, onLogout, installed, ca
   );
 }
 
-function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, crews, onCallCrew, crewCalls, myName, myId, onCheckOut, onCheckInHere, onUpdateVibe, onStartCheckinAt }) {
+function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, crews, onCallCrew, crewCalls, myName, myId, onCheckOut, onCheckInHere, onUpdateVibe, onStartCheckinAt, reactionsByCheckin, onToggleReaction }) {
   const [query, setQuery] = useState("");
   const [osmResults, setOsmResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -1810,6 +1844,8 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
               crews={crews}
               onCallCrew={onCallCrew}
               distance={g.distance}
+              reactionsByCheckin={reactionsByCheckin}
+              onToggleReaction={onToggleReaction}
             />
           ))}
         </div>
@@ -1958,6 +1994,8 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
               crews={crews}
               onCallCrew={onCallCrew}
               distance={item.distance}
+              reactionsByCheckin={reactionsByCheckin}
+              onToggleReaction={onToggleReaction}
             />
           ) : (
             <EventCard
@@ -1982,6 +2020,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [checkins, setCheckins] = useState([]);
+  const [reactionsByCheckin, setReactionsByCheckin] = useState({});
   const [venues, setVenues] = useState({});
   const [favoriteIds, setFavoriteIds] = useState(new Set());
   const [crews, setCrews] = useState([]);
@@ -2137,6 +2176,21 @@ export default function App() {
     setCheckins(checkinData || []);
   }, []);
 
+  // Small-scale app (see project-notes.md) — loads every reaction rather than
+  // scoping the query to whatever check-ins happen to be on screen, same
+  // simplicity tradeoff as loadData() loading all check-ins.
+  const loadReactions = useCallback(async () => {
+    const { data } = await supabase.from("checkin_reactions").select("checkin_id, user_id, emoji");
+    const map = {};
+    (data || []).forEach((row) => {
+      if (!map[row.checkin_id]) map[row.checkin_id] = {};
+      if (!map[row.checkin_id][row.emoji]) map[row.checkin_id][row.emoji] = { count: 0, mine: false };
+      map[row.checkin_id][row.emoji].count += 1;
+      if (row.user_id === session?.user?.id) map[row.checkin_id][row.emoji].mine = true;
+    });
+    setReactionsByCheckin(map);
+  }, [session]);
+
   const loadFavorites = useCallback(async () => {
     if (!session) return;
     const { data } = await supabase.from("favorites").select("venue_id").eq("user_id", session.user.id);
@@ -2208,7 +2262,7 @@ export default function App() {
   }, [session]);
 
   useEffect(() => {
-    if (session) { loadData(); loadStats(); loadFavorites(); loadCrews(); loadFriends(); }
+    if (session) { loadData(); loadStats(); loadFavorites(); loadCrews(); loadFriends(); loadReactions(); }
   }, [session, loadData]);
 
   const toggleFavorite = async (venueId) => {
@@ -2222,6 +2276,23 @@ export default function App() {
       next.add(venueId);
       setFavoriteIds(next);
       await supabase.from("favorites").insert({ user_id: session.user.id, venue_id: venueId });
+    }
+  };
+
+  const toggleReaction = async (checkinId, emoji) => {
+    const current = reactionsByCheckin[checkinId]?.[emoji] || { count: 0, mine: false };
+    const next = {
+      ...reactionsByCheckin,
+      [checkinId]: {
+        ...reactionsByCheckin[checkinId],
+        [emoji]: { count: current.mine ? current.count - 1 : current.count + 1, mine: !current.mine },
+      },
+    };
+    setReactionsByCheckin(next);
+    if (current.mine) {
+      await supabase.from("checkin_reactions").delete().eq("checkin_id", checkinId).eq("user_id", session.user.id).eq("emoji", emoji);
+    } else {
+      await supabase.from("checkin_reactions").insert({ checkin_id: checkinId, user_id: session.user.id, user_name: profile.name, emoji });
     }
   };
 
@@ -2310,10 +2381,11 @@ export default function App() {
       .on("postgres_changes", { event: "*", schema: "public", table: "checkins" }, loadData)
       .on("postgres_changes", { event: "*", schema: "public", table: "venues" }, loadData)
       .on("postgres_changes", { event: "*", schema: "public", table: "crew_calls" }, () => loadCrewCalls())
+      .on("postgres_changes", { event: "*", schema: "public", table: "checkin_reactions" }, () => loadReactions())
       .subscribe();
     const interval = setInterval(loadData, 60000); // refresh every minute to drop expired check-ins
     return () => { supabase.removeChannel(channel); clearInterval(interval); };
-  }, [session, loadData, loadCrewCalls]);
+  }, [session, loadData, loadCrewCalls, loadReactions]);
 
   const handleSetName = async (name) => {
     setSettingUp(true);
@@ -2516,6 +2588,8 @@ export default function App() {
                   onUpdateVibe={updateVibe}
                   onStartCheckinAt={(name) => { setPrefillVenue(name); setPresetVenue(null); setView("checkin"); }}
                   onCheckInHere={(venue) => { setPresetVenue(venue); setPrefillVenue(""); setView("checkin"); }}
+                  reactionsByCheckin={reactionsByCheckin}
+                  onToggleReaction={toggleReaction}
                 />
               )}
             </div>
