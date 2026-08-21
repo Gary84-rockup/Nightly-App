@@ -59,7 +59,7 @@ const BADGES = [
 
 const STAT_NOUNS = { checkinCount: "check-in", venueCount: "venue", friendCount: "friend" };
 
-const SCREEN_TITLES = { feed: "who's out", checkin: "plan ahead", crew: "your crew", friends: "friends", you: "you" };
+const SCREEN_TITLES = { feed: "who's out", checkin: "plan ahead", myplans: "your plans", crew: "your crew", friends: "friends", you: "you" };
 
 // DICE-inspired venue cards use a real photo per vibe instead of a flat
 // colour wash — "lit" has no photo yet, so it keeps the gradient fallback.
@@ -371,7 +371,7 @@ function compressImage(file, maxDimension = 1280, quality = 0.8) {
   });
 }
 
-function CheckInForm({ onCreate, onCreatePlan, onCancel, initialVenueQuery, presetVenue, tonightCrew, initialMode }) {
+function CheckInForm({ onCreate, onCreatePlan, onUpdatePlan, onCancel, initialVenueQuery, presetVenue, tonightCrew, initialMode, editingPlan }) {
   // "right now" is a live check-in (existing flow, unchanged below); "planning
   // ahead" posts a forward-looking plan instead — same venue search, but no
   // vibe/duration/photo/crew (none of those make sense before you're there).
@@ -380,7 +380,10 @@ function CheckInForm({ onCreate, onCreatePlan, onCancel, initialVenueQuery, pres
   // live check-ins stay reachable via "check in here" on any venue card, so
   // this tab doesn't need to default there too.
   const [mode, setMode] = useState(initialMode || "now");
-  const [plannedDate, setPlannedDate] = useState(null);
+  // Editing an existing plan only ever touches day/genre/note — the venue
+  // comes in locked via presetVenue (App sets it from editingPlan.venue_*)
+  // same as the "check in here" flow, so no separate edit-venue path needed.
+  const [plannedDate, setPlannedDate] = useState(editingPlan ? editingPlan.planned_date : null);
   const [venueQuery, setVenueQuery] = useState(initialVenueQuery || "");
   const [venueResults, setVenueResults] = useState([]);
   const [selectedVenue, setSelectedVenue] = useState(
@@ -389,8 +392,8 @@ function CheckInForm({ onCreate, onCreatePlan, onCancel, initialVenueQuery, pres
       : null
   );
   const [vibe, setVibe] = useState("chill");
-  const [genre, setGenre] = useState(null);
-  const [note, setNote] = useState("");
+  const [genre, setGenre] = useState(editingPlan ? editingPlan.genre : null);
+  const [note, setNote] = useState(editingPlan ? editingPlan.note || "" : "");
   const [hours, setHours] = useState(3);
   const [includeCrew, setIncludeCrew] = useState(!!tonightCrew);
   const [photoBlob, setPhotoBlob] = useState(null);
@@ -560,7 +563,7 @@ function CheckInForm({ onCreate, onCreatePlan, onCancel, initialVenueQuery, pres
   return (
     <div style={{ padding: "18px 20px 40px" }}>
       <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 20, color: colors.text, marginBottom: 16 }}>
-        {mode === "now" ? "check in" : "make a plan"}
+        {editingPlan ? "edit your plan" : mode === "now" ? "check in" : "make a plan"}
       </div>
 
       {!presetVenue && (
@@ -606,7 +609,7 @@ function CheckInForm({ onCreate, onCreatePlan, onCancel, initialVenueQuery, pres
           }}
         >
           <span style={{ fontFamily: bodyFont, fontSize: 13.5, color: colors.text, fontWeight: 600 }}>📍 {presetVenue.name}</span>
-          <span style={{ fontFamily: monoFont, fontSize: 10, color: "#4ECDC4" }}>✓ already spotted</span>
+          <span style={{ fontFamily: monoFont, fontSize: 10, color: "#4ECDC4" }}>{editingPlan ? "✓ locked in" : "✓ already spotted"}</span>
         </div>
       ) : (
         <>
@@ -834,7 +837,8 @@ function CheckInForm({ onCreate, onCreatePlan, onCancel, initialVenueQuery, pres
             if (!selectedVenue) return;
             if (mode === "plan") {
               if (!plannedDate) return;
-              onCreatePlan({ venue: selectedVenue, genre, note: note.trim(), plannedDate });
+              if (editingPlan) onUpdatePlan(editingPlan.id, { genre, note: note.trim(), plannedDate });
+              else onCreatePlan({ venue: selectedVenue, genre, note: note.trim(), plannedDate });
             } else {
               onCreate({
                 venue: selectedVenue,
@@ -850,7 +854,7 @@ function CheckInForm({ onCreate, onCreatePlan, onCancel, initialVenueQuery, pres
           disabled={!selectedVenue || compressingPhoto || (mode === "plan" && !plannedDate)}
           style={{ flex: 2 }}
         >
-          {mode === "plan" ? "add the plan" : "check in"}
+          {editingPlan ? "save changes" : mode === "plan" ? "add the plan" : "check in"}
         </Button>
       </div>
     </div>
@@ -1203,6 +1207,48 @@ function PlanCard({ plan, interest, onToggleInterest, friendIds, myId }) {
         style={{ padding: "6px 12px", fontSize: 11.5 }}
       >
         🙋 {count > 0 ? `${count} · ` : ""}{mine ? "you're in" : "me too"}
+      </Button>
+    </div>
+  );
+}
+
+// Reached from the hub's Plan tile when you already have a plan on the books
+// — shows what you've got instead of dropping you straight into a blank
+// form, with a way to edit each one or add another.
+function MyPlansScreen({ plans, onEdit, onMakeAnother }) {
+  return (
+    <div style={{ padding: "6px 0 20px" }}>
+      <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 18, color: colors.text, marginBottom: 4 }}>
+        your plans
+      </div>
+      <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.textMuted, marginBottom: 16 }}>
+        {plans.length === 1 ? "one plan coming up." : `${plans.length} plans coming up.`}
+      </div>
+      {plans.map((p) => (
+        <div key={p.id} style={{ background: colors.surface, border: `1px solid ${colors.line}`, borderRadius: 14, padding: 14, marginBottom: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontFamily: monoFont, fontSize: 10, color: "#FF6B4A", fontWeight: 700, marginBottom: 4 }}>
+                📅 {formatPlanDate(p.planned_date)}
+              </div>
+              <div style={{ fontFamily: displayFont, fontWeight: 700, fontSize: 15, color: colors.text }}>
+                📍 {p.venue_name}
+              </div>
+              {p.genre && GENRE_TAGS[p.genre] && (
+                <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: colors.textMuted, marginTop: 3 }}>
+                  {GENRE_TAGS[p.genre].emoji} {GENRE_TAGS[p.genre].label}
+                </div>
+              )}
+              {p.note && <div style={{ fontFamily: bodyFont, fontSize: 12, color: colors.textMuted, marginTop: 4 }}>"{p.note}"</div>}
+            </div>
+            <Button variant="ghost" onClick={() => onEdit(p)} style={{ padding: "7px 12px", fontSize: 11.5, flexShrink: 0 }}>
+              ✏️ edit
+            </Button>
+          </div>
+        </div>
+      ))}
+      <Button onClick={onMakeAnother} style={{ width: "100%", marginTop: 6 }}>
+        + make another plan
       </Button>
     </div>
   );
@@ -2722,6 +2768,7 @@ export default function App() {
   const [prefillVenue, setPrefillVenue] = useState("");
   const [presetVenue, setPresetVenue] = useState(null);
   const [checkinInitialMode, setCheckinInitialMode] = useState("now");
+  const [editingPlan, setEditingPlan] = useState(null);
   const [inviterName, setInviterName] = useState(null);
   const [installEvent, setInstallEvent] = useState(null);
   const [installed, setInstalled] = useState(() => isStandaloneDisplay());
@@ -3273,6 +3320,26 @@ export default function App() {
     }
   };
 
+  // Editing only ever touches day/genre/note — the venue is locked once a
+  // plan exists (see CheckInForm's presetVenue lock), so there's no venue
+  // re-resolve step here like createPlan has.
+  const updatePlan = async (planId, data) => {
+    try {
+      const { error: updateErr } = await supabase
+        .from("plans")
+        .update({ genre: data.genre || null, note: data.note || null, planned_date: data.plannedDate })
+        .eq("id", planId);
+      if (updateErr) throw updateErr;
+      setView("myplans");
+      setEditingPlan(null);
+      setPresetVenue(null);
+      setPrefillVenue("");
+      loadPlans();
+    } catch (e) {
+      setError("Couldn't save your changes — try again.");
+    }
+  };
+
   const checkOut = async (checkinId, photoUrl) => {
     const { error: delErr } = await supabase.from("checkins").delete().eq("id", checkinId);
     if (delErr) {
@@ -3347,13 +3414,49 @@ export default function App() {
                   plansCount={plans.length}
                   crewsCount={crews.length}
                   friendsCount={friends.length}
-                  onNavigate={(id) => { if (id === "checkin") { setPrefillVenue(""); setPresetVenue(null); setCheckinInitialMode("plan"); } setView(id); }}
+                  onNavigate={(id) => {
+                    if (id === "checkin") {
+                      setPrefillVenue("");
+                      setPresetVenue(null);
+                      setEditingPlan(null);
+                      setCheckinInitialMode("plan");
+                      const myPlans = plans.filter((p) => p.user_id === session.user.id);
+                      setView(myPlans.length > 0 ? "myplans" : "checkin");
+                      return;
+                    }
+                    setView(id);
+                  }}
+                />
+              ) : view === "myplans" ? (
+                <MyPlansScreen
+                  plans={plans.filter((p) => p.user_id === session.user.id)}
+                  onEdit={(plan) => {
+                    setEditingPlan(plan);
+                    setPresetVenue({ id: plan.venue_id, name: plan.venue_name });
+                    setPrefillVenue("");
+                    setCheckinInitialMode("plan");
+                    setView("checkin");
+                  }}
+                  onMakeAnother={() => {
+                    setEditingPlan(null);
+                    setPresetVenue(null);
+                    setPrefillVenue("");
+                    setCheckinInitialMode("plan");
+                    setView("checkin");
+                  }}
                 />
               ) : view === "checkin" ? (
                 <CheckInForm
                   onCreate={checkIn}
                   onCreatePlan={createPlan}
-                  onCancel={() => { setPrefillVenue(""); setPresetVenue(null); setView(checkinInitialMode === "plan" ? "hub" : "feed"); }}
+                  onUpdatePlan={updatePlan}
+                  editingPlan={editingPlan}
+                  onCancel={() => {
+                    setPrefillVenue("");
+                    setPresetVenue(null);
+                    setView(editingPlan ? "myplans" : checkinInitialMode === "plan" ? "hub" : "feed");
+                    setEditingPlan(null);
+                  }}
                   initialVenueQuery={prefillVenue}
                   presetVenue={presetVenue}
                   tonightCrew={tonightCrew}
