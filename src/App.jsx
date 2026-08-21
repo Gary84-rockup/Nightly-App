@@ -1698,10 +1698,33 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
     setSearching(true);
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&limit=4&q=${encodeURIComponent(query)}`
-        );
-        const data = await res.json();
+        let data = [];
+        if (geo.coords) {
+          // Hard-filtered to a ~10km box around the user first, same fix as the
+          // check-in screen's own search — otherwise a common pub name (e.g. "The
+          // Three Tuns") pulls back same-named venues from anywhere in the country.
+          const d = 0.09;
+          const boundedParams = new URLSearchParams({
+            format: "json",
+            limit: "4",
+            q: query,
+            viewbox: `${geo.coords.lng - d},${geo.coords.lat + d},${geo.coords.lng + d},${geo.coords.lat - d}`,
+            bounded: "1",
+          });
+          const res = await fetch(`https://nominatim.openstreetmap.org/search?${boundedParams.toString()}`);
+          data = await res.json();
+          if (data.length === 0) {
+            const fallbackRes = await fetch(
+              `https://nominatim.openstreetmap.org/search?format=json&limit=4&q=${encodeURIComponent(query)}`
+            );
+            data = await fallbackRes.json();
+          }
+        } else {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&limit=4&q=${encodeURIComponent(query)}`
+          );
+          data = await res.json();
+        }
         setOsmResults(data);
       } catch (e) {
         setOsmResults([]);
@@ -1710,7 +1733,7 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [query, feedItems.length]);
+  }, [query, feedItems.length, geo.coords]);
 
   return (
     <div>
@@ -1966,10 +1989,14 @@ function FeedScreen({ groups, venues, favoriteIds, onToggleFavorite, friendIds, 
                 gap: 10,
               }}
             >
-              <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.text, flex: 1 }}>
-                {r.display_name.split(",")[0]}
+              <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: colors.text, flex: 1, lineHeight: 1.4 }}>
+                <div style={{ fontWeight: 700 }}>{r.display_name.split(",")[0]}</div>
+                <div style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
+                  {r.display_name.split(",").slice(1).join(",").trim()}
+                  {geo.coords && ` · ${formatDistance(distanceMeters(geo.coords.lat, geo.coords.lng, parseFloat(r.lat), parseFloat(r.lon)))} away`}
+                </div>
               </div>
-              <Button onClick={() => onStartCheckinAt(r.display_name.split(",")[0])} style={{ padding: "7px 12px", fontSize: 11.5 }}>
+              <Button onClick={() => onStartCheckinAt(r.display_name.split(",")[0])} style={{ padding: "7px 12px", fontSize: 11.5, flexShrink: 0 }}>
                 check in
               </Button>
             </div>
