@@ -360,11 +360,15 @@ function compressImage(file, maxDimension = 1280, quality = 0.8) {
   });
 }
 
-function CheckInForm({ onCreate, onCreatePlan, onCancel, initialVenueQuery, presetVenue, tonightCrew }) {
+function CheckInForm({ onCreate, onCreatePlan, onCancel, initialVenueQuery, presetVenue, tonightCrew, initialMode }) {
   // "right now" is a live check-in (existing flow, unchanged below); "planning
   // ahead" posts a forward-looking plan instead — same venue search, but no
   // vibe/duration/photo/crew (none of those make sense before you're there).
-  const [mode, setMode] = useState("now");
+  // Defaults to "now" for every entry point except the bottom-nav Plan tab,
+  // which opens straight into planning mode (see onNavigate in App below) —
+  // live check-ins stay reachable via "check in here" on any venue card, so
+  // this tab doesn't need to default there too.
+  const [mode, setMode] = useState(initialMode || "now");
   const [plannedDate, setPlannedDate] = useState(null);
   const [venueQuery, setVenueQuery] = useState(initialVenueQuery || "");
   const [venueResults, setVenueResults] = useState([]);
@@ -1284,7 +1288,7 @@ function EventCard({ event, interest, onToggleInterest, onCheckInHere, crews, on
 function BottomNav({ view, onNavigate }) {
   const items = [
     { id: "feed", label: "Feed", emoji: "🌆" },
-    { id: "checkin", label: "Check in", emoji: "➕" },
+    { id: "checkin", label: "Plan", emoji: "📅" },
     { id: "crew", label: "Crew", emoji: "👥" },
     { id: "friends", label: "Friends", emoji: "👋" },
     { id: "you", label: "You", emoji: "🏆" },
@@ -2632,6 +2636,7 @@ export default function App() {
   const [stats, setStats] = useState({ checkinCount: 0, venueCount: 0, friendCount: 0 });
   const [prefillVenue, setPrefillVenue] = useState("");
   const [presetVenue, setPresetVenue] = useState(null);
+  const [checkinInitialMode, setCheckinInitialMode] = useState("now");
   const [inviterName, setInviterName] = useState(null);
   const [installEvent, setInstallEvent] = useState(null);
   const [installed, setInstalled] = useState(() => isStandaloneDisplay());
@@ -3248,6 +3253,7 @@ export default function App() {
                   initialVenueQuery={prefillVenue}
                   presetVenue={presetVenue}
                   tonightCrew={tonightCrew}
+                  initialMode={checkinInitialMode}
                 />
               ) : view === "crew" ? (
                 <CrewScreen
@@ -3297,8 +3303,8 @@ export default function App() {
                   myId={session.user.id}
                   onCheckOut={checkOut}
                   onUpdateVibe={updateVibe}
-                  onStartCheckinAt={(name) => { setPrefillVenue(name); setPresetVenue(null); setView("checkin"); }}
-                  onCheckInHere={(venue) => { setPresetVenue(venue); setPrefillVenue(""); setView("checkin"); }}
+                  onStartCheckinAt={(name) => { setPrefillVenue(name); setPresetVenue(null); setCheckinInitialMode("now"); setView("checkin"); }}
+                  onCheckInHere={(venue) => { setPresetVenue(venue); setPrefillVenue(""); setCheckinInitialMode("now"); setView("checkin"); }}
                   reactionsByCheckin={reactionsByCheckin}
                   onToggleReaction={toggleReaction}
                   plans={plans}
@@ -3308,7 +3314,7 @@ export default function App() {
 
             <BottomNav
               view={view}
-              onNavigate={(id) => { if (id === "checkin") { setPrefillVenue(""); setPresetVenue(null); } setView(id); }}
+              onNavigate={(id) => { if (id === "checkin") { setPrefillVenue(""); setPresetVenue(null); setCheckinInitialMode("plan"); } setView(id); }}
             />
           </>
         )}
